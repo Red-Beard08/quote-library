@@ -1,6 +1,6 @@
 /* Runs repeatable mapped imports with previews, verified backups, journals, verification, and rollback. */
 
-import { App, normalizePath, TFile } from "obsidian";
+import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { cleanFolder, sameOrInside, validateMigration } from "./config";
 import { QuoteRepository } from "./repository";
 import { extractCandidate, LEGACY_PROFILE, profileById } from "./profiles";
@@ -117,7 +117,7 @@ export class QuoteMigration {
   private async readJournal(path: string): Promise<MigrationJournal> { const file = this.file(path); if (!file) throw new Error("The migration journal could not be found."); try { const value = JSON.parse(await this.app.vault.cachedRead(file)) as MigrationJournal; if (value.version !== 1 && value.version !== 2) throw new Error(); return value; } catch { throw new Error("The migration journal is malformed or unsupported."); } }
   private async hashFile(path: string): Promise<string> { const file = this.file(path); if (!file) throw new Error(`Cannot hash missing file: ${path}`); return sha256(await this.app.vault.cachedRead(file)); }
   private file(path: string): TFile | null { const item = this.app.vault.getAbstractFileByPath(normalizePath(path)); return item instanceof TFile ? item : null; }
-  private async ensureFolder(path: string): Promise<void> { let current = ""; for (const part of normalizePath(path).split("/")) { current = normalizePath(current ? `${current}/${part}` : part); if (!this.app.vault.getAbstractFileByPath(current)) await this.app.vault.createFolder(current); } }
+  private async ensureFolder(path: string): Promise<void> { let current = ""; for (const part of normalizePath(path).split("/")) { current = normalizePath(current ? `${current}/${part}` : part); const indexed = this.app.vault.getAbstractFileByPath(current); if (indexed instanceof TFolder) continue; if (indexed) throw new Error(`A file is blocking the configured folder: ${current}`); const existing = await this.app.vault.adapter.stat(current); if (existing?.type === "folder") continue; if (existing) throw new Error(`A file is blocking the configured folder: ${current}`); try { await this.app.vault.createFolder(current); } catch (error) { if ((await this.app.vault.adapter.stat(current))?.type !== "folder") throw error; } } }
   private async ensureParent(path: string): Promise<void> { await this.ensureFolder(path.split("/").slice(0, -1).join("/")); }
 }
 

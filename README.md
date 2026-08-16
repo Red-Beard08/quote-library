@@ -1,6 +1,6 @@
 ---
 title: Quote Library
-version: 1.2.0
+version: 1.2.1
 tags:
   - obsidian
   - quotes
@@ -183,7 +183,7 @@ npm run typecheck
 npm run build
 npm test
 node scripts/detect-desktop-dependencies.mjs
-node scripts/validate-version.mjs 1.2.0
+node scripts/validate-version.mjs 1.2.1
 ```
 
 ## License

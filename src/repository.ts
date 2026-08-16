@@ -1,6 +1,6 @@
 /* Stores canonical and legacy quote records as ordinary Markdown beneath a configurable root. */
 
-import { App, normalizePath, TFile } from "obsidian";
+import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { layoutPaths, sameOrInside } from "./config";
 import type { DashboardData, DuplicateGroup, QuoteInput, QuoteLibrarySettings, QuoteRecord, TopicRecord, TopicStatus } from "./types";
 import { availableRecordId, bool, bodySection, duplicateKey, INDEX_END, INDEX_START, isShortRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, QUOTE_END, QUOTE_START, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
@@ -17,7 +17,7 @@ export class QuoteRepository {
 
   async initialize(): Promise<void> {
     await this.ensureFolder(this.root); await this.ensureFolder(this.quotesFolder); await this.ensureFolder(this.topicsFolder);
-    if (!this.file(this.indexPath)) await this.app.vault.create(this.indexPath, this.renderIndex([], []));
+    await this.ensureFile(this.indexPath, this.renderIndex([], []));
   }
 
   async dashboard(): Promise<DashboardData> {
@@ -185,7 +185,20 @@ export class QuoteRepository {
   private async processIfChanged(path: string, transform: (content: string) => string): Promise<void> { const file = this.file(path); if (!file) return; const current = await this.app.vault.cachedRead(file); const next = transform(current); if (next !== current) await this.app.vault.process(file, transform); }
   private async quoteByPath(path: string): Promise<QuoteRecord | null> { const file = this.file(path); return file ? this.readQuote(file) : null; }
   private file(path: string): TFile | null { const item = this.app.vault.getAbstractFileByPath(normalizePath(path)); return item instanceof TFile ? item : null; }
-  private async ensureFolder(path: string): Promise<void> { let current = ""; for (const segment of normalizePath(path).split("/")) { current = normalizePath(current ? `${current}/${segment}` : segment); if (!this.app.vault.getAbstractFileByPath(current)) await this.app.vault.createFolder(current); } }
+  private async ensureFolder(path: string): Promise<void> {
+    let current = "";
+    for (const segment of normalizePath(path).split("/")) {
+      current = normalizePath(current ? `${current}/${segment}` : segment); const indexed = this.app.vault.getAbstractFileByPath(current);
+      if (indexed instanceof TFolder) continue; if (indexed) throw new Error(`A file is blocking the configured folder: ${current}`);
+      const existing = await this.app.vault.adapter.stat(current); if (existing?.type === "folder") continue; if (existing) throw new Error(`A file is blocking the configured folder: ${current}`);
+      try { await this.app.vault.createFolder(current); } catch (error) { if ((await this.app.vault.adapter.stat(current))?.type !== "folder") throw error; }
+    }
+  }
+  private async ensureFile(path: string, content: string): Promise<void> {
+    const indexed = this.app.vault.getAbstractFileByPath(path); if (indexed instanceof TFile) return; if (indexed) throw new Error(`A folder is blocking the configured file: ${path}`);
+    const existing = await this.app.vault.adapter.stat(path); if (existing?.type === "file") return; if (existing) throw new Error(`A folder is blocking the configured file: ${path}`);
+    try { await this.app.vault.create(path, content); } catch (error) { if ((await this.app.vault.adapter.stat(path))?.type !== "file") throw error; }
+  }
   private async availablePath(base: string): Promise<string> { let path = normalizePath(`${this.quotesFolder}/${safeFilename(base)}.md`); let i = 2; while (this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${this.quotesFolder}/${safeFilename(base)}-${i++}.md`); return path; }
 }
 

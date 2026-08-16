@@ -33,7 +33,7 @@ export default class QuoteLibraryPlugin extends Plugin {
     this.addCommand({ id: "restore-migration-backup", name: "Restore a migration backup", callback: () => this.openMigrationTools() });
     this.addSettingTab(new QuoteLibrarySettingTab(this.app, this));
     this.registerEvent(this.app.vault.on("modify", file => this.handleVaultEvent(file.path))); this.registerEvent(this.app.vault.on("rename", file => this.handleVaultEvent(file.path))); this.registerEvent(this.app.vault.on("delete", file => this.handleVaultEvent(file.path)));
-    try { await this.repository.initialize(); await this.refreshDashboard(); } catch (error) { console.error("Quote Library initialization failed.", error); new Notice("Quote Library could not initialize its configured folders."); }
+    try { await this.repository.initialize(); await this.refreshDashboard(); } catch (error) { console.error("Quote Library initialization failed.", error); new Notice(`Quote Library could not initialize: ${message(error)}`); }
   }
   onunload(): void { window.clearTimeout(this.refreshTimer); this.app.workspace.detachLeavesOfType(DASHBOARD_VIEW); }
   async loadSettings(): Promise<void> { this.settings = upgradeSettings(await this.loadData()); this.settings.customProfiles = this.settings.customProfiles.flatMap(profile => { try { return [validateProfile(profile)]; } catch (error) { console.warn("Quote Library ignored a malformed migration profile.", error); return []; } }); await this.saveData(this.settings); }
@@ -74,4 +74,5 @@ export default class QuoteLibraryPlugin extends Plugin {
   private async runBulk<T>(action: () => Promise<T>): Promise<T> { this.bulkOperation = true; try { return await action(); } finally { this.bulkOperation = false; } }
 }
 function unique(values: string[]): string[] { return [...new Set(values)].sort((left, right) => left.localeCompare(right)); }
+function message(error: unknown): string { return error instanceof Error ? error.message : "Unknown startup error."; }
 export { DASHBOARD_VIEW };
