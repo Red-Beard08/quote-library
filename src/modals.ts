@@ -2,7 +2,8 @@
 
 import { App, Modal, Notice, Setting } from "obsidian";
 import type QuoteLibraryPlugin from "./main";
-import type { DuplicateGroup, MigrationPreview, QuoteInput, QuoteRecord, TopicRecord } from "./types";
+import type { BodyExtractionStrategy, DuplicateGroup, MigrationFieldMap, MigrationPreview, MigrationProfile, QuoteInput, QuoteRecord, TopicRecord } from "./types";
+import { COMMON_PROFILE, profiles, validateProfile } from "./profiles";
 import { normalizeName, stableNames } from "./utils";
 
 export class QuoteModal extends Modal {
@@ -14,8 +15,8 @@ export class QuoteModal extends Modal {
   onOpen(): void {
     this.modalEl.addClass("quote-library-modal"); this.contentEl.createEl("h2", { text: this.existing ? "Edit quote" : "Add quote" });
     new Setting(this.contentEl).setName("Quote text").addTextArea(c => { c.setPlaceholder("Enter the complete quotation.").setValue(this.text).onChange(v => { this.text = v; }); c.inputEl.rows = 8; });
-    this.personSetting("Author", this.plugin.cachedAuthors, this.author, value => { this.author = value; }, value => { this.newAuthor = value; });
-    this.personSetting("Source", this.plugin.cachedSources, this.source, value => { this.source = value; }, value => { this.newSource = value; });
+    this.personSetting("Author", this.plugin.cachedAuthors, this.author, value => { this.author = value; if (value) this.newAuthor = ""; }, value => { this.newAuthor = value; if (value) this.author = ""; });
+    this.personSetting("Source", this.plugin.cachedSources, this.source, value => { this.source = value; if (value) this.newSource = ""; }, value => { this.newSource = value; if (value) this.source = ""; });
     this.topicSelector();
     new Setting(this.contentEl).setName("Add new topics").setDesc("Comma-separated; new topic notes are created automatically.").addText(c => c.setPlaceholder("Faith, Courage").onChange(v => { this.newTopics = v; }));
     new Setting(this.contentEl).setName("Pinned").addToggle(c => c.setValue(this.pinned).onChange(v => { this.pinned = v; }));
@@ -61,19 +62,47 @@ class RenameTopicModal extends Modal {
   onOpen(): void { this.contentEl.createEl("h2", { text: "Rename topic" }); new Setting(this.contentEl).setName("Name").addText(c => { c.setValue(this.value).onChange(v => { this.value = v; }); c.inputEl.select(); }); new Setting(this.contentEl).addButton(b => b.setButtonText("Rename everywhere").setCta().onClick(async () => { try { await this.rename(this.value); this.close(); } catch (error) { new Notice(message(error)); } })); }
 }
 
+export class ProfileManagerModal extends Modal {
+  constructor(app: App, private plugin: QuoteLibraryPlugin) { super(app); }
+  onOpen(): void { this.modalEl.addClass("quote-library-modal"); this.render(); }
+  private render(): void {
+    this.contentEl.empty(); this.contentEl.createEl("h2", { text: "Migration profiles" }); const actions = this.contentEl.createDiv({ cls: "quote-library-actions" });
+    button(actions, "Create custom", () => new ProfileEditorModal(this.app, cloneProfile(COMMON_PROFILE), async profile => { await this.plugin.saveProfile(profile); this.render(); }).open(), true);
+    button(actions, "Import JSON", () => new JsonProfileModal(this.app, async value => { await this.plugin.saveProfile(validateProfile(JSON.parse(value) as unknown)); this.render(); }).open());
+    for (const profile of profiles(this.plugin.settings.customProfiles)) { const row = this.contentEl.createDiv({ cls: "quote-library-manager-row" }); const identity = row.createDiv(); identity.createEl("strong", { text: profile.name }); identity.createEl("span", { text: profile.builtIn ? "Built in" : profile.id, cls: "quote-library-muted" }); const rowActions = row.createDiv({ cls: "quote-library-actions" }); button(rowActions, "Export", () => void copyJson(profile)); if (!profile.builtIn) { button(rowActions, "Edit", () => new ProfileEditorModal(this.app, cloneProfile(profile), async next => { await this.plugin.saveProfile(next); this.render(); }).open()); button(rowActions, "Delete", () => void (async () => { await this.plugin.deleteProfile(profile.id); this.render(); })()); } }
+  }
+}
+
+class ProfileEditorModal extends Modal {
+  private value: MigrationProfile; constructor(app: App, profile: MigrationProfile, private save: (profile: MigrationProfile) => Promise<void>) { super(app); this.value = profile; if (this.value.builtIn) { delete this.value.builtIn; this.value.id = `custom-${Date.now().toString(36)}`; this.value.name = `${this.value.name} copy`; } }
+  onOpen(): void {
+    this.modalEl.addClass("quote-library-modal"); this.contentEl.createEl("h2", { text: "Migration profile" });
+    new Setting(this.contentEl).setName("Profile ID").setDesc("Portable lowercase identifier.").addText(text => text.setValue(this.value.id).onChange(value => { this.value.id = value.trim().toLocaleLowerCase().replace(/[^a-z0-9-]/g, "-"); }));
+    new Setting(this.contentEl).setName("Name").addText(text => text.setValue(this.value.name).onChange(value => { this.value.name = value; }));
+    const labels: Record<keyof MigrationFieldMap, string> = { text: "Quote text", author: "Author", source: "Source", topics: "Topics", pinned: "Pinned", archived: "Archived", created: "Created", updated: "Updated", aliases: "Aliases", tags: "Tags" };
+    for (const key of Object.keys(labels) as (keyof MigrationFieldMap)[]) new Setting(this.contentEl).setName(labels[key]).setDesc("Comma-separated source properties, checked in order.").addText(text => text.setValue(this.value.fields[key].join(", ")).onChange(value => { this.value.fields[key] = csv(value); }));
+    new Setting(this.contentEl).setName("Required tags").setDesc("Optional comma-separated candidate filter.").addText(text => text.setValue(this.value.requiredTags.join(", ")).onChange(value => { this.value.requiredTags = csv(value); }));
+    new Setting(this.contentEl).setName("Required types").setDesc("Optional comma-separated frontmatter type filter.").addText(text => text.setValue(this.value.requiredTypes.join(", ")).onChange(value => { this.value.requiredTypes = csv(value); }));
+    new Setting(this.contentEl).setName("Body extraction").addDropdown(dropdown => dropdown.addOption("off", "Disabled").addOption("first-blockquote", "First Markdown blockquote").addOption("heading-blockquote", "Blockquote under heading").setValue(this.value.body.strategy).onChange(value => { this.value.body.strategy = value as BodyExtractionStrategy; }));
+    new Setting(this.contentEl).setName("Body heading").setDesc("Used only for heading-based extraction.").addText(text => text.setValue(this.value.body.heading).onChange(value => { this.value.body.heading = value; }));
+    new Setting(this.contentEl).setName("Read dash attribution").addToggle(toggle => toggle.setValue(this.value.body.attributionLine).onChange(value => { this.value.body.attributionLine = value; }));
+    new Setting(this.contentEl).setName("Remove known legacy display").setDesc("Only removes the recognized legacy template after backup.").addToggle(toggle => toggle.setValue(this.value.body.cleanupKnownLegacyBody).onChange(value => { this.value.body.cleanupKnownLegacyBody = value; }));
+    new Setting(this.contentEl).addButton(button => button.setButtonText("Save profile").setCta().onClick(async () => { try { await this.save(validateProfile(this.value)); this.close(); } catch (error) { new Notice(message(error)); } }));
+  }
+}
+
+class JsonProfileModal extends Modal { private value = ""; constructor(app: App, private importProfile: (value: string) => Promise<void>) { super(app); } onOpen(): void { this.contentEl.createEl("h2", { text: "Import migration profile" }); new Setting(this.contentEl).setName("Profile JSON").addTextArea(area => { area.setPlaceholder('{"version":1,...}').onChange(value => { this.value = value; }); area.inputEl.rows = 14; }); new Setting(this.contentEl).addButton(button => button.setButtonText("Import").setCta().onClick(async () => { try { await this.importProfile(this.value); this.close(); } catch (error) { new Notice(message(error)); } })); } }
+
 export class MigrationModal extends Modal {
   constructor(app: App, private plugin: QuoteLibraryPlugin) { super(app); }
   onOpen(): void { this.modalEl.addClass("quote-library-modal"); void this.render(); }
   private async render(): Promise<void> {
-    this.contentEl.empty(); this.contentEl.createEl("h2", { text: "Quote migration" }); this.contentEl.createEl("p", { text: `Current phase: ${this.plugin.settings.migrationPhase}` });
-    const actions = this.contentEl.createDiv({ cls: "quote-library-actions" });
-    button(actions, "Preview migration", () => void this.run(async () => this.showPreview(await this.plugin.previewMigration())), true);
-    button(actions, "Run schema migration", () => void this.confirm("Back up and migrate all compatible quote notes now?", () => this.plugin.runMigration()));
-    button(actions, "Verify migration", () => void this.run(async () => { const result = await this.plugin.verifyMigration(); this.showLines(result.valid ? "Verification passed" : "Verification failed", [...result.checks, ...result.failures]); }));
-    button(actions, "Modernize filenames", () => void this.confirm("Create a second backup and rename verified quote notes now?", () => this.plugin.modernizeFilenames()));
-    button(actions, "Restore latest backup", () => void this.confirm("Restore every note from the latest migration journal?", () => this.plugin.restoreLatest()));
+    this.contentEl.empty(); this.contentEl.createEl("h2", { text: "Quote migration" }); const defaults = this.plugin.settings.migrationDefaults; this.contentEl.createEl("p", { text: `${defaults.mode === "copy" ? "Copy" : "In-place"} · ${defaults.sourceFolder || this.plugin.repository.quotesFolder} · ${profileName(this.plugin, defaults.profileId)}`, cls: "quote-library-muted" });
+    const actions = this.contentEl.createDiv({ cls: "quote-library-actions" }); button(actions, "Preview migration", () => void this.run(async () => this.showPreview(await this.plugin.previewMigration())), true); button(actions, "Run migration", () => void this.confirm("Create verified backups and migrate every approved candidate now?", () => this.plugin.runMigration())); button(actions, "Verify active run", () => void this.run(async () => { const result = await this.plugin.verifyMigration(); this.showLines(result.valid ? "Verification passed" : "Verification failed", [...result.checks, ...result.failures]); })); button(actions, "Modernize filenames", () => void this.confirm("Create another backup and rename every verified quote now?", () => this.plugin.modernizeFilenames()));
+    this.contentEl.createEl("h3", { text: "Migration history" }); const history = this.plugin.settings.migrationHistory; if (!history.length) this.contentEl.createEl("p", { text: "No journaled migrations yet.", cls: "quote-library-muted" });
+    for (const run of history) { const row = this.contentEl.createDiv({ cls: "quote-library-manager-row" }); const identity = row.createDiv(); identity.createEl("strong", { text: `${run.id} · ${run.status}` }); identity.createEl("span", { text: `${run.mode} · ${run.total} records · ${run.sourceFolder}`, cls: "quote-library-muted" }); const runActions = row.createDiv({ cls: "quote-library-actions" }); if (run.journalPath) { button(runActions, "Verify", () => void this.run(async () => { const result = await this.plugin.verifyMigration(run.id); this.showLines(result.valid ? "Verification passed" : "Verification failed", [...result.checks, ...result.failures]); })); button(runActions, "Restore", () => void this.confirm(`Restore migration ${run.id}? Modified generated copies will be left for manual review.`, () => this.plugin.restoreRun(run.id))); } }
   }
-  private showPreview(p: MigrationPreview): void { this.showLines("Migration preview", [`${p.total} quote files`, `${p.unreadable} unreadable files`, `${p.missingId} missing IDs`, `${p.missingType} missing type`, `${p.missingSource} missing source`, `${p.missingTimestamp} missing timestamps`, `${p.pinnedArchived} pinned and archived`, `${p.duplicateGroups} duplicate groups`, `${p.convertibleBodies} known legacy bodies`, `${p.manualReview} manual-review records`]); }
+  private showPreview(preview: MigrationPreview): void { this.showLines("Migration preview", [`${preview.total} source Markdown files`, `${preview.candidates} candidates`, `${preview.excluded} excluded or unmatched`, `${preview.unreadable} unreadable`, `${preview.manualReview} requiring manual review`, `${preview.missingSource} missing source`, `${preview.duplicateGroups} duplicate groups`, `${preview.convertibleBodies} body-extracted or safely cleanable`]); const result = this.contentEl.querySelector(".quote-library-result"); if (!result) return; result.createEl("h4", { text: "Candidates" }); for (const item of preview.items) { const row = result.createDiv({ cls: `quote-library-manager-row${item.confidence === "manual" ? " is-warning" : ""}` }); const identity = row.createDiv(); identity.createEl("strong", { text: item.path }); identity.createEl("span", { text: item.destinationPath ? `→ ${item.destinationPath}` : "No destination", cls: "quote-library-muted" }); if (item.issues.length) identity.createEl("span", { text: item.issues.join(", "), cls: "quote-library-muted" }); const actions = row.createDiv({ cls: "quote-library-actions" }); button(actions, "Open", () => void this.plugin.openFile(item.path)); if (item.confidence === "manual" || item.issues.includes("unreadable")) button(actions, "Exclude", () => void (async () => { await this.plugin.excludeMigrationPath(item.path); await this.render(); })()); } }
   private showLines(title: string, lines: string[]): void { this.contentEl.querySelector(".quote-library-result")?.remove(); const result = this.contentEl.createDiv({ cls: "quote-library-result" }); result.createEl("h3", { text: title }); const list = result.createEl("ul"); for (const line of lines) list.createEl("li", { text: line }); }
   private async run(action: () => Promise<void>): Promise<void> { try { await action(); } catch (error) { new Notice(message(error)); } }
   private confirm(prompt: string, action: () => Promise<unknown>): void { new ConfirmActionModal(this.app, prompt, async () => { try { await action(); await this.render(); } catch (error) { new Notice(message(error)); } }).open(); }
@@ -94,4 +123,8 @@ export class DuplicateReviewModal extends Modal {
 
 class ConfirmActionModal extends Modal { constructor(app: App, private prompt: string, private action: () => Promise<void>) { super(app); } onOpen(): void { this.contentEl.createEl("h2", { text: "Confirm action" }); this.contentEl.createEl("p", { text: this.prompt }); const actions = this.contentEl.createDiv({ cls: "quote-library-actions" }); button(actions, "Cancel", () => this.close()); button(actions, "Continue", () => void (async () => { this.close(); await this.action(); })(), true); } }
 function button(parent: HTMLElement, label: string, action: () => void, cta = false): void { const element = parent.createEl("button", { text: label, cls: cta ? "mod-cta" : "" }); element.onclick = action; }
+function csv(value: string): string[] { return [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))]; }
+function cloneProfile(profile: MigrationProfile): MigrationProfile { return JSON.parse(JSON.stringify(profile)) as MigrationProfile; }
+function profileName(plugin: QuoteLibraryPlugin, id: string): string { return profiles(plugin.settings.customProfiles).find(profile => profile.id === id)?.name ?? "Unknown profile"; }
+async function copyJson(profile: MigrationProfile): Promise<void> { try { const exported = { ...profile }; delete exported.builtIn; await navigator.clipboard.writeText(JSON.stringify(exported, null, 2)); new Notice("Migration profile JSON copied."); } catch { new Notice("The profile could not be copied on this device."); } }
 function message(error: unknown): string { return error instanceof Error ? error.message : "Quote Library could not complete that action."; }

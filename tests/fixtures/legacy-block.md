@@ -1,9 +1,9 @@
 ---
 quote_text: |-
-  A good husband helps his wife rest.
-  A good wife helps her husband stand.
-quote_author: Nolan
-quote_source: " Church"
+  First line of a synthetic quotation.
+  Second line of a synthetic quotation.
+quote_author: Sample Writer
+quote_source: " Example Source"
 quote_pin: true
 quote_archive: true
 tags:

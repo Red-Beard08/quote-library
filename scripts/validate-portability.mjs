@@ -1,7 +1,7 @@
 /* Rejects local-vault details, secrets, generated assets, and desktop-only source dependencies. */
 import fs from "node:fs"; import path from "node:path";
 const roots = ["src", "scripts", "tests", ".github"]; const self = path.normalize("scripts/validate-portability.mjs"); const files = ["README.md", "manifest.json", "package.json", "versions.json", "styles.css", "LICENSE"];
-for (const root of roots) if (fs.existsSync(root)) walk(root, files); const forbidden = [["Collections", ""].join("/"), ["i", "Cloud"].join(""), ["C:", "Users"].join("\\"), ["request", "Url"].join("")]; const failures = [];
+for (const root of roots) if (fs.existsSync(root)) walk(root, files); const forbidden = [["Collections", ""].join("/"), ["i", "Cloud"].join(""), ["C:", "Users"].join("\\"), ["request", "Url"].join(""), ["Red-Beard's", " Dashboard"].join(""), ["Sin is more", " contagious than holiness"].join("")]; const failures = [];
 for (const file of files) { if (path.normalize(file) === self) continue; const content = fs.readFileSync(file, "utf8"); for (const term of forbidden) if (content.toLocaleLowerCase().includes(term.toLocaleLowerCase())) failures.push(`${file} contains forbidden local or online-service content.`); if (/from ["'](?:fs|path|electron|os|child_process)["']/.test(content) && file.startsWith("src")) failures.push(`${file} contains a desktop-only source dependency.`); }
 if (failures.length) throw new Error([...new Set(failures)].join("\n")); console.log("Validated Quote Library portability.");
 function walk(root, output) { for (const entry of fs.readdirSync(root, { withFileTypes: true })) { const full = path.join(root, entry.name); if (entry.isDirectory()) walk(full, output); else output.push(full); } }

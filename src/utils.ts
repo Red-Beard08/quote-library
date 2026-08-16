@@ -69,8 +69,9 @@ export function parseNote(content: string): ParsedNote {
   flushBlock();
   return { frontmatter, body: content.slice(end + 5), prefix: content.slice(0, end + 5) };
 }
-function yamlScalar(raw: string): string | boolean {
+function yamlScalar(raw: string): string | boolean | string[] {
   const value = raw.trim(); if (value === "true") return true; if (value === "false") return false;
+  if (value.startsWith("[") && value.endsWith("]")) { const inner = value.slice(1, -1).trim(); if (!inner) return []; return inner.split(",").map(item => item.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean); }
   if (value.startsWith('"')) { try { return JSON.parse(value) as string; } catch { return value.slice(1, -1); } }
   return value.replace(/^['"]|['"]$/g, "");
 }

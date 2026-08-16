@@ -38,6 +38,8 @@
 .quote-library-topic-option.is-archived { opacity: .7; }
 .quote-library-result, .quote-library-duplicate-card { margin-top: 14px; padding: 14px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-secondary); }
 .quote-library-duplicate-card { display: grid; gap: 5px; }
+.quote-library-manager-row.is-warning { border-color: var(--text-warning); }
+.quote-library-setting-error { margin: 8px 0; color: var(--text-error); }
 @media (max-width: 850px) { .quote-library-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) {
   .quote-library-dashboard { padding: 12px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
