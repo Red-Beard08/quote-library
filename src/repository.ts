@@ -3,7 +3,7 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { layoutPaths, sameOrInside } from "./config";
 import type { DashboardData, DuplicateGroup, QuoteInput, QuoteLibrarySettings, QuoteRecord, TopicRecord, TopicStatus } from "./types";
-import { availableRecordId, bool, bodySection, duplicateKey, INDEX_END, INDEX_START, isShortRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, QUOTE_END, QUOTE_START, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
+import { availableRecordId, bool, bodySection, duplicateKey, INDEX_END, INDEX_START, isShortRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, quoteDisplayBody, QUOTE_END, QUOTE_START, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
 
 export class QuoteRepository {
   private unreadablePaths: string[] = [];
@@ -123,6 +123,7 @@ export class QuoteRepository {
 
   async rebuildSummaries(): Promise<void> {
     await this.initialize(); const quotes = await this.getQuotes(); const topics = await this.getTopics();
+    for (const quote of quotes) await this.processIfChanged(quote.path, content => { const parsed = parseNote(content); const body = replaceManagedBlock(parsed.body, QUOTE_START, QUOTE_END, this.quoteBody(quote)); return `${content.slice(0, content.length - parsed.body.length)}${body}`; });
     await this.processIfChanged(this.indexPath, content => replaceManagedBlock(content, INDEX_START, INDEX_END, this.indexBody(quotes, topics)));
     for (const topic of topics) {
       const matching = quotes.filter(quote => quote.topics.some(name => topicKey(name) === topicKey(topic.name)));
@@ -174,7 +175,7 @@ export class QuoteRepository {
   private renderQuote(record: QuoteRecord): string {
     return `---\ntype: quote-library-quote\nid: ${yamlString(record.id)}\nquote_text: ${yamlString(record.text)}\nquote_author: ${yamlString(record.author)}\nquote_source: ${yamlString(record.source)}\nquote_pin: ${record.pinned}\nquote_archive: ${record.archived}\ntopics:\n${yamlList(record.topics)}\ntags:\n  - quote\naliases:\n${yamlList(record.aliases)}\ncreated: ${record.created}\nupdated: ${record.updated}\n---\n\n${QUOTE_START}\n${this.quoteBody(record)}\n${QUOTE_END}\n\n## Personal notes\n\n${record.notes}\n`;
   }
-  private quoteBody(record: Pick<QuoteRecord, "text" | "author" | "source">): string { return `> ${record.text.replace(/\n/g, "\n> ")}\n>\n> — **${record.author}**${record.source ? `, _${record.source}_` : ""}`; }
+  private quoteBody(record: Pick<QuoteRecord, "text" | "author">): string { return quoteDisplayBody(record.text, record.author); }
   private renderTopic(topic: TopicRecord): string { return `---\ntype: quote-library-topic\nid: ${yamlString(topic.id)}\nname: ${yamlString(topic.name)}\nstatus: ${topic.status}\naliases:\n${yamlList(topic.aliases)}\ncreated: ${topic.created}\nupdated: ${topic.updated}\n---\n\n# ${topic.name}\n\n${TOPIC_START}\n_No quotes are assigned yet._\n${TOPIC_END}\n\n## Topic notes\n\n`; }
   private renderIndex(quotes: QuoteRecord[], topics: TopicRecord[]): string { return `---\ntype: quote-library-index\ncreated: ${isoMinute()}\n---\n\n# Quote Library\n\n${INDEX_START}\n${this.indexBody(quotes, topics)}\n${INDEX_END}\n\n## Library notes\n\n`; }
   private indexBody(quotes: QuoteRecord[], topics: TopicRecord[]): string {

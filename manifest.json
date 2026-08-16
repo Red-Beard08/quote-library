@@ -1,7 +1,7 @@
 {
   "id": "quote-library",
   "name": "Quote Library",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "minAppVersion": "1.5.0",
   "description": "Manage a Markdown-first quotation library from a responsive dashboard.",
   "author": "Corthon",

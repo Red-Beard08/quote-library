@@ -1,6 +1,6 @@
 ---
 title: Quote Library
-version: 1.2.1
+version: 1.2.2
 tags:
   - obsidian
   - quotes
@@ -106,7 +106,7 @@ updated: YYYY-MM-DDTHH:mm
 
 Quote IDs use `QTE-XXXX`, where `XXXX` is a four-character base-36 hash. The plugin checks proposed IDs against the library and deterministically retries on collision. New filenames use `QTE-XXXX - Short quote excerpt.md`; the short ID remains the permanent identity if descriptive metadata later changes.
 
-The rendered quote is bounded by managed markers. Personal writing belongs under **Personal notes** and remains outside managed content.
+The rendered and copied quote contains only the quote text and author. `quote_source` remains searchable metadata and powers the Sources report, but is not appended to the quotation. The rendered quote is bounded by managed markers. Personal writing belongs under **Personal notes** and remains outside managed content.
 
 ## Import and Migration
 
@@ -183,7 +183,7 @@ npm run typecheck
 npm run build
 npm test
 node scripts/detect-desktop-dependencies.mjs
-node scripts/validate-version.mjs 1.2.1
+node scripts/validate-version.mjs 1.2.2
 ```
 
 ## License

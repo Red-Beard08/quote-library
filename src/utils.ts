@@ -19,6 +19,8 @@ export function normalizeQuoteText(value: string): string {
 }
 export function duplicateKey(text: string, author = ""): string { return `${normalizeQuoteText(text)}\u241f${topicKey(author)}`; }
 export function textDuplicateKey(text: string): string { return normalizeQuoteText(text); }
+export function quoteDisplayBody(text: string, author: string): string { return `> ${text.replace(/\n/g, "\n> ")}\n>\n> — **${author}**`; }
+export function quoteClipboardText(text: string, author: string): string { return `“${text}” — ${author}`; }
 export function shortExcerpt(text: string, length = 48): string {
   const plain = text.replace(/\s+/g, " ").trim().replace(/[\\/:*?"<>|#^[\]]/g, "-");
   return (plain.slice(0, length).trim() || "Quote").replace(/[. ]+$/g, "");

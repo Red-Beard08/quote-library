@@ -14,6 +14,8 @@ const fixture = name => fs.readFileSync(path.join("tests", "fixtures", name), "u
 
 if (utils.normalizeName('  " Example Source" ') !== "Example Source") throw new Error("Author/source normalization failed.");
 if (utils.normalizeQuoteText(" ‘Faith’  — Hope ") !== "'faith' - hope") throw new Error("Quote normalization failed.");
+if (utils.quoteDisplayBody("A quote.", "Author").includes("Source") || utils.quoteDisplayBody("A quote.", "Author") !== "> A quote.\n>\n> — **Author**") throw new Error("Visible quote rendering failed.");
+if (utils.quoteClipboardText("A quote.", "Author") !== "“A quote.” — Author") throw new Error("Copied quote rendering failed.");
 if (utils.duplicateKey("Same quote.", "Author") !== utils.duplicateKey(" Same  quote. ", "author")) throw new Error("Duplicate normalization failed.");
 if (utils.safeFilename('A / quote?') !== "A - quote-") throw new Error("Safe filename failed.");
 const shortId = utils.deterministicRecordId("QTE", "2026-08-16T13:05:20:quote");
