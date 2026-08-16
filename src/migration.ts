@@ -3,7 +3,7 @@
 import { App, normalizePath, TFile } from "obsidian";
 import { QuoteRepository } from "./repository";
 import type { MigrationIssue, MigrationJournal, MigrationPreview, QuoteLibrarySettings, QuoteRecord, VerificationResult } from "./types";
-import { contentHash, isoMinute, knownLegacyBody, normalizeName, parseNote, removeKnownLegacyBody, safeFilename, scalar, sha256, shortExcerpt, stableNames, strings } from "./utils";
+import { contentHash, deterministicRecordId, isTimestampRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, removeKnownLegacyBody, safeFilename, scalar, sha256, shortExcerpt, stableNames, strings } from "./utils";
 
 export class QuoteMigration {
   constructor(private app: App, private repository: QuoteRepository, private settings: QuoteLibrarySettings, private saveSettings: () => Promise<void>) {}
@@ -14,10 +14,10 @@ export class QuoteMigration {
     for (const quote of quotes) {
       const file = this.file(quote.path); if (!file) continue; const parsed = parseNote(await this.app.vault.cachedRead(file)); const fm = parsed.frontmatter; const issues: string[] = [];
       if (!scalar(fm.quote_source)) issues.push("missing-source"); if (!scalar(fm.created) || !(scalar(fm.updated) || scalar(fm.last_updated))) issues.push("missing-timestamp");
-      if (!scalar(fm.id)) issues.push("missing-id"); if (scalar(fm.type) !== "quote-library-quote") issues.push("missing-type");
+      if (!scalar(fm.id)) issues.push("missing-id"); else if (isTimestampRecordId(scalar(fm.id))) issues.push("timestamp-id"); if (scalar(fm.type) !== "quote-library-quote") issues.push("missing-type");
       const tags = [...strings(fm.tags), ...strings(fm.Tags)]; if (!tags.some(tag => tag.toLocaleLowerCase() === "quote")) issues.push("missing-tag");
       if (quote.pinned && quote.archived) issues.push("pinned-and-archived"); if (!quote.topics.length) issues.push("unassigned-topic");
-      items.push({ path: quote.path, issues, proposedId: quote.id || migrationId(quote, file), bodyConvertible: knownLegacyBody(parsed.body) });
+      items.push({ path: quote.path, issues, proposedId: !quote.id || isTimestampRecordId(quote.id) ? migrationId(quote) : quote.id, bodyConvertible: knownLegacyBody(parsed.body) });
     }
     for (const path of unreadable) items.push({ path, issues: ["unreadable"], proposedId: "", bodyConvertible: false });
     const signature = contentHash(items.map(item => `${item.path}:${this.file(item.path)?.stat.mtime ?? 0}:${item.proposedId}`).join("|"));
@@ -119,7 +119,7 @@ export class QuoteMigration {
 }
 
 function journalPath(journal: MigrationJournal): string { return normalizePath(`${journal.backupRoot}/Migration Journal.json`); }
-function migrationId(quote: QuoteRecord, file: TFile): string { const raw = quote.created || isoMinute(new Date(file.stat.ctime)); const digits = raw.replace(/\D/g, "").padEnd(14, "0").slice(0, 14); return `QTE-${digits.slice(0, 8)}-${digits.slice(8, 14)}-${contentHash(`${quote.path}:${quote.text}`).slice(0, 4).toUpperCase()}`; }
+function migrationId(quote: QuoteRecord): string { return deterministicRecordId("QTE", `${quote.path}:${quote.text}`); }
 function normalKey(value: string): string { return normalizeName(value).toLocaleLowerCase(); }
 function mostCommon(values: string[]): Map<string, string> { const groups = new Map<string, Map<string, number>>(); for (const value of values.map(normalizeName).filter(Boolean)) { const key = normalKey(value); const variants = groups.get(key) ?? new Map<string, number>(); variants.set(value, (variants.get(value) ?? 0) + 1); groups.set(key, variants); } const result = new Map<string, string>(); for (const [key, variants] of groups) result.set(key, [...variants].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0]); return result; }
 function message(error: unknown): string { return error instanceof Error ? error.message : "Unknown migration error"; }

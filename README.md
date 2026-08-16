@@ -1,6 +1,6 @@
 ---
 title: Quote Library
-version: 1.0.0
+version: 1.1.0
 tags:
   - obsidian
   - quotes
@@ -77,13 +77,13 @@ Quote text and author are required. A normalized text-and-author collision opens
 - **Authors** and **Sources** derive reports directly from quote metadata.
 - **Archive** shows archived records with Restore actions.
 
-Every card supports Edit, Copy, Pin or Unpin, Archive or Restore, and Open note. Version 1.0 never permanently deletes a quote.
+Every card supports Edit, Copy, Pin or Unpin, Archive or Restore, and Open note. Quote Library never permanently deletes a quote through the dashboard.
 
 ## Markdown Schema
 
 ```yaml
 type: quote-library-quote
-id: QTE-YYYYMMDD-HHMMSS-XXXX
+id: QTE-550E8400-E29B-41D4-A716-446655440000
 quote_text: "The quotation"
 quote_author: Author Name
 quote_source: Source
@@ -98,6 +98,8 @@ aliases:
 created: YYYY-MM-DDTHH:mm
 updated: YYYY-MM-DDTHH:mm
 ```
+
+Quote IDs use `QTE-<GUID>` and contain no dates, times, authors, or quote text. New quotes receive a random GUID. Migration converts the former timestamp-based IDs to deterministic GUIDs so repeated previews propose the same identity. Modernized filenames use `QTE-<GUID> - Short quote excerpt.md`; the GUID remains the permanent identity if descriptive metadata later changes.
 
 The quote display is bounded by managed markers. Personal writing belongs under **Personal notes** and is preserved outside managed content.
 
@@ -134,7 +136,7 @@ npm run typecheck
 npm run build
 npm test
 node scripts/detect-desktop-dependencies.mjs
-node scripts/validate-version.mjs 1.0.0
+node scripts/validate-version.mjs 1.1.0
 ```
 
 ## License

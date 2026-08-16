@@ -14,7 +14,10 @@ if (utils.normalizeName('  " Church" ') !== "Church") throw new Error("Author/so
 if (utils.normalizeQuoteText(" ‘Faith’  — Hope ") !== "'faith' - hope") throw new Error("Quote normalization failed.");
 if (utils.duplicateKey("Same quote.", "Author") !== utils.duplicateKey(" Same  quote. ", "author")) throw new Error("Duplicate normalization failed.");
 if (utils.safeFilename('A / quote?') !== "A - quote-") throw new Error("Safe filename failed.");
-if (!/^QTE-\d{8}-\d{6}-[A-Z0-9]{4}$/.test(utils.timestampId(new Date(2026, 7, 16, 13, 5, 9), "A7F2"))) throw new Error("Stable ID format failed.");
+const guidId = utils.recordId("QTE", "550e8400-e29b-41d4-a716-446655440000");
+if (guidId !== "QTE-550E8400-E29B-41D4-A716-446655440000" || !/^QTE-[A-F0-9]{8}(?:-[A-F0-9]{4}){3}-[A-F0-9]{12}$/.test(utils.recordId())) throw new Error("GUID ID format failed.");
+if (utils.deterministicRecordId("QTE", "same quote") !== utils.deterministicRecordId("QTE", "same quote")) throw new Error("Migration GUIDs are not deterministic.");
+if (!utils.isTimestampRecordId("QTE-20260816-130520-A7F2") || utils.isTimestampRecordId(guidId)) throw new Error("Legacy timestamp ID detection failed.");
 if (utils.dailyIndex(["a", "b", "c"], "2026-08-16") !== utils.dailyIndex(["a", "b", "c"], "2026-08-16")) throw new Error("Daily selection is not deterministic.");
 if (utils.dailyIndex(["a", "b", "c"], "2026-08-16", 1) === utils.dailyIndex(["a", "b", "c"], "2026-08-16", 0)) throw new Error("Show-another offset failed.");
 
