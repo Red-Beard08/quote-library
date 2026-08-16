@@ -21,6 +21,7 @@ export function duplicateKey(text: string, author = ""): string { return `${norm
 export function textDuplicateKey(text: string): string { return normalizeQuoteText(text); }
 export function quoteDisplayBody(text: string, author: string): string { return `> ${text.replace(/\n/g, "\n> ")}\n>\n> — **${author}**`; }
 export function quoteClipboardText(text: string, author: string): string { return `“${text}” — ${author}`; }
+export function quoteAttentionReasons(quote: { source: string; topics: string[]; legacy: boolean }): string[] { const reasons: string[] = []; if (!quote.source) reasons.push("Missing source metadata"); if (!quote.topics.length) reasons.push("No topics assigned"); if (quote.legacy) reasons.push("Legacy note format"); return reasons; }
 export function shortExcerpt(text: string, length = 48): string {
   const plain = text.replace(/\s+/g, " ").trim().replace(/[\\/:*?"<>|#^[\]]/g, "-");
   return (plain.slice(0, length).trim() || "Quote").replace(/[. ]+$/g, "");

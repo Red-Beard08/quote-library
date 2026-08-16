@@ -15,6 +15,6 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: node scripts/detect-desktop-dependencies.mjs
-      - run: node scripts/validate-version.mjs 1.2.2
+      - run: node scripts/validate-version.mjs 1.2.3
       - name: Reject tracked ignored artifacts
         run: test -z "$(git ls-files main.js data.json .obsidian node_modules '*.map' '*.bak' '*.tmp')"

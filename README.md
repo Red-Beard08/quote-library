@@ -1,6 +1,6 @@
 ---
 title: Quote Library
-version: 1.2.2
+version: 1.2.3
 tags:
   - obsidian
   - quotes
@@ -15,6 +15,7 @@ Quote Library is a mobile-compatible Obsidian plugin for capturing, organizing, 
 
 - Overview, Topics, Authors, Sources, and Archive dashboard tabs
 - Stable Quote of the Day with optional pinned-quote preference
+- Per-quote explanations for every Needs attention item
 - Search across quote text, author, source, topics, and personal notes
 - Add and edit forms with existing-value suggestions and freeform entry
 - Pin, archive, restore, copy, and open-note actions
@@ -183,7 +184,7 @@ npm run typecheck
 npm run build
 npm test
 node scripts/detect-desktop-dependencies.mjs
-node scripts/validate-version.mjs 1.2.2
+node scripts/validate-version.mjs 1.2.3
 ```
 
 ## License
