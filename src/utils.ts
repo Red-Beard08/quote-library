@@ -24,19 +24,15 @@ export function shortExcerpt(text: string, length = 48): string {
   return (plain.slice(0, length).trim() || "Quote").replace(/[. ]+$/g, "");
 }
 export function safeFilename(value: string): string { return value.replace(/[\\/:*?"<>|#^[\]]/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "Quote"; }
-export function recordId(prefix = "QTE", guid = randomGuid()): string { return `${prefix}-${normalizeGuid(guid)}`; }
-export function deterministicRecordId(prefix: string, seed: string): string {
-  const hex = [0, 1, 2, 3].map(index => contentHash(`${index}:${seed}`).padStart(8, "0")).join("").toUpperCase().split("");
-  hex[12] = "5"; hex[16] = ["8", "9", "A", "B"][Number.parseInt(hex[16], 16) % 4];
-  return recordId(prefix, formatGuid(hex.join("")));
+export function deterministicRecordId(prefix: string, seed: string, attempt = 0): string {
+  const suffix = stableHash(`${seed}:${attempt}`).toString(36).toUpperCase().padStart(4, "0").slice(-4);
+  return `${prefix}-${suffix}`;
 }
-export function isTimestampRecordId(value: string, prefix = "QTE"): boolean { return new RegExp(`^${prefix}-\\d{8}-\\d{6}-[A-Z0-9]{4}$`, "i").test(value); }
-export function randomGuid(): string {
-  const bytes = new Uint8Array(16); crypto.getRandomValues(bytes); bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  return formatGuid([...bytes].map(byte => byte.toString(16).padStart(2, "0")).join(""));
+export function availableRecordId(prefix: string, seed: string, used: ReadonlySet<string>): string {
+  for (let attempt = 0; attempt < 1_000_000; attempt++) { const id = deterministicRecordId(prefix, seed, attempt); if (!used.has(id)) return id; }
+  throw new Error(`No available ${prefix} identifier could be generated.`);
 }
-function normalizeGuid(value: string): string { const compact = value.replace(/-/g, "").toUpperCase(); if (!/^[A-F0-9]{32}$/.test(compact)) throw new Error("A valid GUID is required."); return formatGuid(compact); }
-function formatGuid(hex: string): string { return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`.toUpperCase(); }
+export function isShortRecordId(value: string, prefix = "QTE"): boolean { return new RegExp(`^${prefix}-[A-Z0-9]{4}$`, "i").test(value); }
 export function isoMinute(date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;

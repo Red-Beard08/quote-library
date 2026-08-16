@@ -1,6 +1,6 @@
 ---
 title: Quote Library
-version: 1.1.0
+version: 1.1.1
 tags:
   - obsidian
   - quotes
@@ -83,7 +83,7 @@ Every card supports Edit, Copy, Pin or Unpin, Archive or Restore, and Open note.
 
 ```yaml
 type: quote-library-quote
-id: QTE-550E8400-E29B-41D4-A716-446655440000
+id: QTE-A7F2
 quote_text: "The quotation"
 quote_author: Author Name
 quote_source: Source
@@ -99,7 +99,7 @@ created: YYYY-MM-DDTHH:mm
 updated: YYYY-MM-DDTHH:mm
 ```
 
-Quote IDs use `QTE-<GUID>` and contain no dates, times, authors, or quote text. New quotes receive a random GUID. Migration converts the former timestamp-based IDs to deterministic GUIDs so repeated previews propose the same identity. Modernized filenames use `QTE-<GUID> - Short quote excerpt.md`; the GUID remains the permanent identity if descriptive metadata later changes.
+Quote IDs use `QTE-XXXX`, where `XXXX` is a four-character base-36 hash. The creation timestamp is the primary seed, with stable record data included to distinguish notes that share a timestamp. The plugin checks every proposed ID against the library and tries another deterministic hash if a collision exists. Modernized filenames use `QTE-XXXX - Short quote excerpt.md`; the short ID remains the permanent identity if descriptive metadata later changes.
 
 The quote display is bounded by managed markers. Personal writing belongs under **Personal notes** and is preserved outside managed content.
 
@@ -136,7 +136,7 @@ npm run typecheck
 npm run build
 npm test
 node scripts/detect-desktop-dependencies.mjs
-node scripts/validate-version.mjs 1.1.0
+node scripts/validate-version.mjs 1.1.1
 ```
 
 ## License

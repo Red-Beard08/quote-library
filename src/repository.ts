@@ -2,7 +2,7 @@
 
 import { App, normalizePath, TFile } from "obsidian";
 import type { DashboardData, DuplicateGroup, QuoteInput, QuoteLibrarySettings, QuoteRecord, TopicRecord, TopicStatus } from "./types";
-import { bool, bodySection, deterministicRecordId, duplicateKey, INDEX_END, INDEX_START, isTimestampRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, QUOTE_END, QUOTE_START, recordId, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
+import { availableRecordId, bool, bodySection, duplicateKey, INDEX_END, INDEX_START, isShortRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, QUOTE_END, QUOTE_START, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
 
 export class QuoteRepository {
   private unreadablePaths: string[] = [];
@@ -40,10 +40,10 @@ export class QuoteRepository {
   async saveQuote(input: QuoteInput): Promise<{ quote: QuoteRecord; created: boolean }> {
     await this.initialize(); const normalized = normalizeInput(input);
     if (!normalized.text || !normalized.author) throw new Error("Quote text and author are required.");
-    const exact = (await this.getQuotes()).find(quote => duplicateKey(quote.text, quote.author) === duplicateKey(normalized.text, normalized.author));
+    const quotes = await this.getQuotes(); const exact = quotes.find(quote => duplicateKey(quote.text, quote.author) === duplicateKey(normalized.text, normalized.author));
     if (exact) return { quote: exact, created: false };
     for (const topic of normalized.topics) await this.ensureTopic(topic);
-    const id = recordId(); const now = isoMinute();
+    const now = isoMinute(); const id = availableRecordId("QTE", `${now}:${normalized.text}:${normalized.author}`, new Set(quotes.map(quote => quote.id).filter(Boolean)));
     const path = await this.availablePath(`${id} - ${shortExcerpt(normalized.text)}`);
     const quote: QuoteRecord = { ...normalized, id, path, aliases: [aliasFor(normalized)], created: now, updated: now, legacy: false, duplicateOf: "", duplicateKept: false };
     await this.app.vault.create(path, this.renderQuote(quote)); await this.rebuildSummaries();
@@ -123,7 +123,7 @@ export class QuoteRepository {
 
   async writeQuote(record: QuoteRecord): Promise<void> {
     const file = this.file(record.path); if (!file) throw new Error("The quote note could not be found.");
-    if (!record.id) record.id = recordId(); else if (isTimestampRecordId(record.id)) record.id = deterministicRecordId("QTE", `${record.path}:${record.text}`); if (!record.aliases.length) record.aliases = [aliasFor(record)]; record.legacy = false;
+    if (!isShortRecordId(record.id)) { const used = new Set((await this.getQuotes()).filter(quote => quote.path !== record.path).map(quote => quote.id).filter(Boolean)); record.id = availableRecordId("QTE", `${record.created}:${record.path}:${record.text}`, used); } if (!record.aliases.length) record.aliases = [aliasFor(record)]; record.legacy = false;
     await this.app.fileManager.processFrontMatter(file, fm => {
       fm.type = "quote-library-quote"; fm.id = record.id; fm.quote_text = record.text; fm.quote_author = record.author; fm.quote_source = record.source;
       fm.quote_pin = record.pinned; fm.quote_archive = record.archived; fm.topics = record.topics; fm.tags = ["quote"]; fm.aliases = record.aliases;
@@ -145,7 +145,7 @@ export class QuoteRepository {
       id: scalar(fm.id), path: file.path, text, author: normalizeName(scalar(fm.quote_author)), source: normalizeName(scalar(fm.quote_source)),
       pinned: bool(fm.quote_pin), archived: bool(fm.quote_archive), topics: stableNames(strings(fm.topics)), aliases: strings(fm.aliases),
       created, updated: scalar(fm.updated) || scalar(fm.last_updated) || isoMinute(new Date(file.stat.mtime)), notes: bodySection(parsed.body, "Personal notes"),
-      legacy: scalar(fm.type) !== "quote-library-quote" || !scalar(fm.id) || isTimestampRecordId(scalar(fm.id)), duplicateOf: scalar(fm.quote_duplicate_of), duplicateKept: bool(fm.quote_duplicate_keep)
+      legacy: scalar(fm.type) !== "quote-library-quote" || !isShortRecordId(scalar(fm.id)), duplicateOf: scalar(fm.quote_duplicate_of), duplicateKept: bool(fm.quote_duplicate_keep)
     };
   }
 
@@ -153,8 +153,8 @@ export class QuoteRepository {
     await this.writeQuote({ ...quote, ...change, updated: isoMinute() }); await this.rebuildSummaries();
   }
   private async ensureTopic(name: string): Promise<TopicRecord> {
-    await this.initialize(); const normalized = normalizeName(name); const existing = (await this.getTopics()).find(topic => topicKey(topic.name) === topicKey(normalized)); if (existing) return existing;
-    const now = isoMinute(); const topic: TopicRecord = { id: recordId("TPC"), name: normalized, status: "active", aliases: [], path: normalizePath(`${this.topicsFolder}/${safeFilename(normalized)}.md`), created: now, updated: now };
+    await this.initialize(); const normalized = normalizeName(name); const topics = await this.getTopics(); const existing = topics.find(topic => topicKey(topic.name) === topicKey(normalized)); if (existing) return existing;
+    const now = isoMinute(); const topic: TopicRecord = { id: availableRecordId("TPC", `${now}:${normalized}`, new Set(topics.map(item => item.id).filter(Boolean))), name: normalized, status: "active", aliases: [], path: normalizePath(`${this.topicsFolder}/${safeFilename(normalized)}.md`), created: now, updated: now };
     if (this.app.vault.getAbstractFileByPath(topic.path)) topic.path = normalizePath(`${this.topicsFolder}/${safeFilename(normalized)}-${topic.id.slice(-4)}.md`);
     await this.app.vault.create(topic.path, this.renderTopic(topic)); return topic;
   }
