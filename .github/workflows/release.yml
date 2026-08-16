@@ -1,0 +1,34 @@
+# Builds, tags, and publishes a validated Quote Library release on demand.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version matching package metadata
+        required: true
+        default: "1.0.0"
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: node scripts/validate-version.mjs "${{ inputs.version }}"
+      - run: npm test
+      - run: node scripts/detect-desktop-dependencies.mjs
+      - name: Create tag
+        env: { VERSION: "${{ inputs.version }}" }
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git tag "$VERSION"
+          git push origin "$VERSION"
+      - name: Publish release assets
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          VERSION: "${{ inputs.version }}"
+        run: gh release create "$VERSION" main.js manifest.json styles.css --title "Quote Library $VERSION" --generate-notes

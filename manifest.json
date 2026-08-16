@@ -1,0 +1,9 @@
+{
+  "id": "quote-library",
+  "name": "Quote Library",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Manage a Markdown-first quotation library from a responsive dashboard.",
+  "author": "Corthon",
+  "isDesktopOnly": false
+}
