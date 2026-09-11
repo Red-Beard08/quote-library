@@ -1,6 +1,6 @@
 ---
 title: Quote Library
-version: 1.2.3
+version: 1.3.0
 tags:
   - obsidian
   - quotes
@@ -22,6 +22,9 @@ Quote Library is a mobile-compatible Obsidian plugin for capturing, organizing, 
 - Configurable root, quote, topic, index, and backup locations
 - Managed topic notes and a Markdown library index
 - Duplicate review with non-destructive merging
+- Shared Red-Beard Foundation path, managed-block, hashing, mobile-modal, and dashboard-widget contracts
+- Data quality preview for incomplete, legacy, ambiguous, duplicate, invalid, and out-of-root records
+- Optional Quote of the Day, pinned, and recent widgets for Red-Beard Dashboard
 - Reusable migration profiles with JSON import and export
 - Frontmatter mapping plus optional body extraction
 - Previewed, backed-up, journaled copy or in-place migrations
@@ -79,11 +82,16 @@ Quote text and author are required for normal entry. A normalized text-and-autho
 ### Browse the dashboard
 
 - **Overview** shows metrics, Quote of the Day, incomplete records, pinned quotes, and recent additions.
+- **View All** shows the complete active library; archived records remain in the separate Archive tab.
 - **Topics** groups quotes by managed topics.
 - **Authors** and **Sources** derive reports directly from quote metadata.
 - **Archive** shows archived records with Restore actions.
 
-Every quote card supports Edit, Copy, Pin or Unpin, Archive or Restore, and Open note. The dashboard has no permanent-delete action.
+Every quote card supports Edit, Copy, Pin or Unpin, Archive or Restore, and Open note. The dashboard has no permanent-delete action. When duplicates are merged, the secondary note is retained and moved into the configured duplicate archive subfolder. Records in that duplicate archive folder are excluded from dashboard totals, search, Quote of the Day, topics, authors, sources, managed summaries, and duplicate detection. The Archive tab continues to show ordinary library records whose archive flag is enabled.
+
+The dashboard header keeps Add quote visible and places maintenance controls in an expandable **Settings** panel. That panel provides an Issue list with per-quote reasons, topic management, duplicate review, canonical upgrade, migration tools, summary rebuilding, index access, and a shortcut to Quote Library's Obsidian settings. On wider desktop panes, the Overview places pinned quotes in the left column and recently added quotes in the right column. Pinned quotes remain visible there even when archived, while Recently added contains active quotes only. Those sections stack on mobile and narrow panes. Quote cards display the creation date without the stored time component.
+
+**Data quality** is a preview-first tool available from the dashboard Settings panel or command palette. It reports incomplete records, legacy notes, ambiguous author/source variants, duplicate text groups, invalid or repeated IDs, and paths outside the configured quote folder. Author/source normalization is a separate confirmed action; it does not guess at attribution.
 
 ## Markdown Schema
 
@@ -110,6 +118,18 @@ Quote IDs use `QTE-XXXX`, where `XXXX` is a four-character base-36 hash. The plu
 The rendered and copied quote contains only the quote text and author. `quote_source` remains searchable metadata and powers the Sources report, but is not appended to the quotation. The rendered quote is bounded by managed markers. Personal writing belongs under **Personal notes** and remains outside managed content.
 
 ## Import and Migration
+
+### Upgrade Legacy quotes in the current library
+
+Use **Upgrade Legacy quotes** on the dashboard, **Upgrade quotes to canonical format** in the command palette, or **Open canonical upgrade** in settings. The preview lists only notes currently marked Legacy; canonical notes are not rewritten.
+
+The dedicated upgrade tool provides three portable options:
+
+- **Include archived duplicates:** include Legacy notes beneath the configured duplicate archive folder.
+- **Remove known legacy display:** remove only the recognized inline-Dataview display and body `#quote` marker after backup. Other body content is preserved.
+- **Modernize filenames:** optionally rename upgraded notes to `QTE-XXXX - Short excerpt.md`. This is disabled by default.
+
+Before changing a note, the plugin creates and hash-verifies a byte-for-byte backup beneath the configured backup folder. The run is journaled in Migration history and can be verified or restored there. Upgrading supplies the canonical `type`, a collision-checked short ID, normalized fields, managed display markers, and a Personal notes section. It does not infer missing authors, sources, or topics.
 
 Migration is optional and never runs automatically. Open **Migration tools** from the dashboard or command palette.
 
@@ -151,9 +171,16 @@ Migration preserves pinned and archived as independent fields, does not infer to
 - **Library root:** parent folder for a clean structured library
 - **Quotes folder:** quote-note location relative to the root; blank means the root itself
 - **Topics folder:** managed topic-note location relative to the root
+- **Duplicate archive subfolder:** location beneath Quotes for merged secondary records
 - **Index file:** managed Markdown filename stored at the library root
 - **Backup folder:** vault-relative migration backup location
 - **Prefer pinned Quote of the Day:** uses active pinned quotes when available
+- **Power-user naming:** quote/topic prefixes, filename template, excerpt length, and collision policy for future records
+- **Power-user taxonomy:** conservative author/source normalization and archived-topic entry behavior
+- **Power-user defaults:** initial pin/archive state, recent-card count, archived pinned visibility, and Quote of the Day preference
+- **Power-user dashboard:** startup preference, compact density, card columns, and automatic refresh policy
+- **Power-user automation:** refresh-on-change, debounce, and background-notice preferences
+- **Power-user privacy:** ordinary Markdown reminder visibility
 - **Migration source:** vault-relative folder to scan
 - **Include subfolders:** controls recursive discovery
 - **Migration mode:** Copy or In-place
@@ -163,6 +190,10 @@ Migration preserves pinned and archived as independent fields, does not infer to
 ## Mobile Support
 
 Quote Library uses Obsidian's vault, file-manager, settings, modal, and clipboard-compatible browser APIs. It does not use Node.js, Electron, shell commands, external networking, or absolute filesystem paths. Dashboard actions wrap on narrow screens, and migration tools use the same mobile-compatible dialogs as quote entry.
+
+### Dashboard widget integration
+
+When Red-Beard Dashboard is installed, Quote Library registers optional widgets for Quote of the Day, pinned quotes, and recent quotes. The integration is capability-based: removing Red-Beard Dashboard does not affect Quote Library, its notes, or its own dashboard. The shared Foundation adapters are vendored at a pinned revision so clean public checkouts do not depend on a machine-specific package path.
 
 Large migrations are safer to preview and run while the device is awake and Obsidian remains in the foreground. Allow cloud sync to finish before opening the same vault on another device.
 
@@ -184,7 +215,7 @@ npm run typecheck
 npm run build
 npm test
 node scripts/detect-desktop-dependencies.mjs
-node scripts/validate-version.mjs 1.2.3
+node scripts/validate-version.mjs 1.3.0
 ```
 
 ## License

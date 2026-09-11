@@ -1,5 +1,7 @@
 /* Supplies pure normalization, parsing, hashing, managed-block, and filename helpers. */
 
+import { foundationManagedBlock, foundationSha256 } from "./foundation";
+
 export const INDEX_START = "<!-- quote-library:index:start -->";
 export const INDEX_END = "<!-- quote-library:index:end -->";
 export const TOPIC_START = "<!-- quote-library:topic:start -->";
@@ -18,6 +20,7 @@ export function normalizeQuoteText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/[“”„‟]/g, '"').replace(/[‘’‚‛]/g, "'").replace(/[—–]/g, "-").replace(/\s+/g, " ").trim();
 }
 export function duplicateKey(text: string, author = ""): string { return `${normalizeQuoteText(text)}\u241f${topicKey(author)}`; }
+export function duplicateIdentityChanged(currentText: string, currentAuthor: string, nextText: string, nextAuthor: string): boolean { return duplicateKey(currentText, currentAuthor) !== duplicateKey(nextText, nextAuthor); }
 export function textDuplicateKey(text: string): string { return normalizeQuoteText(text); }
 export function quoteDisplayBody(text: string, author: string): string { return `> ${text.replace(/\n/g, "\n> ")}\n>\n> — **${author}**`; }
 export function quoteClipboardText(text: string, author: string): string { return `“${text}” — ${author}`; }
@@ -45,8 +48,7 @@ export function stableHash(value: string): number { let hash = 2166136261; for (
 export function dailyIndex(ids: string[], day: string, offset = 0): number { return ids.length ? (stableHash(`${day}:${ids.join("|")}`) + offset) % ids.length : -1; }
 export function contentHash(value: string): string { return stableHash(value).toString(16).padStart(8, "0"); }
 export async function sha256(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value); const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  return foundationSha256(value);
 }
 
 export interface ParsedNote { frontmatter: Record<string, unknown>; body: string; prefix: string; }
@@ -84,9 +86,7 @@ export function bool(value: unknown): boolean { return value === true || scalar(
 export function yamlString(value: string): string { return JSON.stringify(value); }
 export function yamlList(values: string[]): string { return values.length ? values.map(value => `  - ${yamlString(value)}`).join("\n") : "  []"; }
 export function replaceManagedBlock(content: string, start: string, end: string, body: string): string {
-  const block = `${start}\n${body.trim()}\n${end}`; const from = content.indexOf(start); const to = content.indexOf(end);
-  if (from >= 0 && to >= from) return `${content.slice(0, from)}${block}${content.slice(to + end.length)}`;
-  return `${content.trimEnd()}\n\n${block}\n`;
+  return foundationManagedBlock(content, start, end, body);
 }
 export function bodySection(body: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

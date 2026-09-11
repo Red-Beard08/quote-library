@@ -1,22 +1,23 @@
 /* Stores canonical and legacy quote records as ordinary Markdown beneath a configurable root. */
 
 import { App, normalizePath, TFile, TFolder } from "obsidian";
-import { layoutPaths, sameOrInside } from "./config";
+import { isQuoteRecordPath, layoutPaths, sameOrInside } from "./config";
 import type { DashboardData, DuplicateGroup, QuoteInput, QuoteLibrarySettings, QuoteRecord, TopicRecord, TopicStatus } from "./types";
-import { availableRecordId, bool, bodySection, duplicateKey, INDEX_END, INDEX_START, isShortRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, quoteDisplayBody, QUOTE_END, QUOTE_START, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
+import { availableRecordId, bool, bodySection, duplicateIdentityChanged, duplicateKey, INDEX_END, INDEX_START, isShortRecordId, isoMinute, knownLegacyBody, normalizeName, parseNote, quoteDisplayBody, QUOTE_END, QUOTE_START, removeKnownLegacyBody, replaceManagedBlock, safeFilename, scalar, shortExcerpt, stableNames, strings, textDuplicateKey, TOPIC_END, TOPIC_START, topicKey, yamlList, yamlString } from "./utils";
 
 export class QuoteRepository {
   private unreadablePaths: string[] = [];
   constructor(private app: App, private settings: QuoteLibrarySettings) {}
   updateSettings(settings: QuoteLibrarySettings): void { this.settings = settings; }
-  get paths(): ReturnType<typeof layoutPaths> { const value = layoutPaths(this.settings.layout); return { root: normalizePath(value.root), quotes: normalizePath(value.quotes), topics: normalizePath(value.topics), index: normalizePath(value.index), backup: normalizePath(value.backup) }; }
+  get paths(): ReturnType<typeof layoutPaths> { const value = layoutPaths(this.settings.layout); return { root: normalizePath(value.root), quotes: normalizePath(value.quotes), topics: normalizePath(value.topics), duplicateArchive: normalizePath(value.duplicateArchive), index: normalizePath(value.index), backup: normalizePath(value.backup) }; }
   get root(): string { return this.paths.root; }
   get quotesFolder(): string { return this.paths.quotes; }
   get topicsFolder(): string { return this.paths.topics; }
+  get duplicateArchiveFolder(): string { return this.paths.duplicateArchive; }
   get indexPath(): string { return this.paths.index; }
 
   async initialize(): Promise<void> {
-    await this.ensureFolder(this.root); await this.ensureFolder(this.quotesFolder); await this.ensureFolder(this.topicsFolder);
+    await this.ensureFolder(this.root); await this.ensureFolder(this.quotesFolder); await this.ensureFolder(this.topicsFolder); await this.ensureFolder(this.duplicateArchiveFolder);
     await this.ensureFile(this.indexPath, this.renderIndex([], []));
   }
 
@@ -26,8 +27,8 @@ export class QuoteRepository {
     return { quotes, topics, duplicates: this.duplicateGroups(quotes), unreadablePaths: this.getUnreadablePaths() };
   }
 
-  async getQuotes(): Promise<QuoteRecord[]> {
-    const files = this.app.vault.getMarkdownFiles().filter(file => sameOrInside(file.path, this.quotesFolder) && !sameOrInside(file.path, this.topicsFolder) && !sameOrInside(file.path, this.paths.backup) && file.path !== this.indexPath);
+  async getQuotes(options: { includeDuplicateArchive?: boolean } = {}): Promise<QuoteRecord[]> {
+    const files = this.app.vault.getMarkdownFiles().filter(file => isQuoteRecordPath(file.path, this.paths, options.includeDuplicateArchive === true));
     this.unreadablePaths = [];
     const records = await Promise.all(files.map(async file => { try { return await this.readQuote(file); } catch (error) { console.warn(`Quote Library could not read ${file.path}.`, error); this.unreadablePaths.push(file.path); return null; } }));
     return records.filter((record): record is QuoteRecord => Boolean(record)).sort((a, b) => b.created.localeCompare(a.created) || a.path.localeCompare(b.path));
@@ -46,15 +47,15 @@ export class QuoteRepository {
     const quotes = await this.getQuotes(); const exact = quotes.find(quote => duplicateKey(quote.text, quote.author) === duplicateKey(normalized.text, normalized.author));
     if (exact) return { quote: exact, created: false };
     for (const topic of normalized.topics) await this.ensureTopic(topic);
-    const now = isoMinute(); const id = availableRecordId("QTE", `${now}:${normalized.text}:${normalized.author}`, new Set(quotes.map(quote => quote.id).filter(Boolean)));
-    const path = await this.availablePath(`${id} - ${shortExcerpt(normalized.text)}`);
+    const now = isoMinute(); const id = availableRecordId(this.settings.power.naming.quoteIdPrefix, `${now}:${normalized.text}:${normalized.author}`, new Set(quotes.map(quote => quote.id).filter(Boolean)));
+    const path = await this.availablePath(this.quoteFilename(id, normalized.text));
     const quote: QuoteRecord = { ...normalized, id, path, aliases: [aliasFor(normalized)], created: now, updated: now, legacy: false, duplicateOf: "", duplicateKept: false };
     await this.app.vault.create(path, this.renderQuote(quote)); await this.rebuildSummaries();
     return { quote: (await this.quoteByPath(path))!, created: true };
   }
 
   async createImportedQuote(record: QuoteRecord, id: string): Promise<QuoteRecord> {
-    await this.initialize(); for (const topic of record.topics) await this.ensureTopic(topic); const path = await this.availablePath(`${id} - ${shortExcerpt(record.text)}`);
+    await this.initialize(); for (const topic of record.topics) await this.ensureTopic(topic); const path = await this.availablePath(this.quoteFilename(id, record.text));
     const imported: QuoteRecord = { ...record, id, path, aliases: record.aliases.length ? record.aliases : [aliasFor(record)], legacy: false };
     await this.app.vault.create(path, this.renderQuote(imported)); return (await this.quoteByPath(path)) ?? imported;
   }
@@ -62,7 +63,7 @@ export class QuoteRepository {
   async editQuote(path: string, input: QuoteInput): Promise<QuoteRecord> {
     const current = await this.quoteByPath(path); if (!current) throw new Error("The quote note could not be found.");
     const normalized = normalizeInput(input); if (!normalized.text || !normalized.author) throw new Error("Quote text and author are required.");
-    const collision = (await this.getQuotes()).find(quote => quote.path !== path && duplicateKey(quote.text, quote.author) === duplicateKey(normalized.text, normalized.author));
+    const collision = duplicateIdentityChanged(current.text, current.author, normalized.text, normalized.author) ? (await this.getQuotes()).find(quote => quote.path !== path && duplicateKey(quote.text, quote.author) === duplicateKey(normalized.text, normalized.author)) : undefined;
     if (collision) throw new Error("That quote and author already exist. Open the existing quote instead.");
     for (const topic of normalized.topics) await this.ensureTopic(topic);
     const next: QuoteRecord = { ...current, ...normalized, aliases: [aliasFor(normalized)], updated: isoMinute() };
@@ -114,11 +115,38 @@ export class QuoteRepository {
     primary.source = primary.source || secondary.source; primary.created = [primary.created, secondary.created].filter(Boolean).sort()[0] ?? primary.created; await this.writeQuote(primary);
     const secondaryFile = this.file(secondary.path); if (!secondaryFile) throw new Error("The duplicate note could not be found.");
     await this.app.fileManager.processFrontMatter(secondaryFile, fm => { fm.quote_archive = true; fm.quote_duplicate_of = `[[${primary.path.slice(0, -3)}]]`; fm.updated = isoMinute(); });
+    await this.moveDuplicateToArchive(secondaryFile);
     await this.rebuildSummaries();
+  }
+
+  async organizeArchivedDuplicates(): Promise<number> {
+    await this.initialize(); let moved = 0;
+    for (const quote of await this.getQuotes()) {
+      if (!quote.duplicateOf || sameOrInside(quote.path, this.duplicateArchiveFolder)) continue;
+      const file = this.file(quote.path); if (!file) continue;
+      await this.moveDuplicateToArchive(file); moved++;
+    }
+    if (moved) await this.rebuildSummaries();
+    return moved;
   }
 
   async keepDuplicates(quotes: QuoteRecord[]): Promise<void> {
     for (const quote of quotes) { const file = this.file(quote.path); if (file) await this.app.fileManager.processFrontMatter(file, fm => { fm.quote_duplicate_keep = true; fm.updated = isoMinute(); }); }
+  }
+
+  /** Normalize author/source metadata only after the user has reviewed the preview. */
+  async normalizeMetadata(): Promise<number> {
+    let changed = 0;
+    for (const quote of await this.getQuotes({ includeDuplicateArchive: true })) {
+      const file = this.file(quote.path); if (!file) continue;
+      const parsed = parseNote(await this.app.vault.cachedRead(file)); const author = normalizeName(scalar(parsed.frontmatter.quote_author)); const source = normalizeName(scalar(parsed.frontmatter.quote_source));
+      const authorChanged = this.settings.power.taxonomy.normalizeAuthors && author !== scalar(parsed.frontmatter.quote_author);
+      const sourceChanged = this.settings.power.taxonomy.normalizeSources && source !== scalar(parsed.frontmatter.quote_source);
+      if (!authorChanged && !sourceChanged) continue;
+      await this.app.fileManager.processFrontMatter(file, fm => { if (authorChanged) fm.quote_author = author; if (sourceChanged) fm.quote_source = source; fm.updated = isoMinute(); }); changed++;
+    }
+    if (changed) await this.rebuildSummaries();
+    return changed;
   }
 
   async rebuildSummaries(): Promise<void> {
@@ -133,7 +161,7 @@ export class QuoteRepository {
 
   async writeQuote(record: QuoteRecord, cleanupKnownLegacy = true): Promise<void> {
     const file = this.file(record.path); if (!file) throw new Error("The quote note could not be found.");
-    if (!isShortRecordId(record.id)) { const used = new Set((await this.getQuotes()).filter(quote => quote.path !== record.path).map(quote => quote.id).filter(Boolean)); record.id = availableRecordId("QTE", `${record.created}:${record.path}:${record.text}`, used); } if (!record.aliases.length) record.aliases = [aliasFor(record)]; record.legacy = false;
+    if (!isShortRecordId(record.id, this.settings.power.naming.quoteIdPrefix)) { const used = new Set((await this.getQuotes()).filter(quote => quote.path !== record.path).map(quote => quote.id).filter(Boolean)); record.id = availableRecordId(this.settings.power.naming.quoteIdPrefix, `${record.created}:${record.path}:${record.text}`, used); } if (!record.aliases.length) record.aliases = [aliasFor(record)]; record.legacy = false;
     await this.app.fileManager.processFrontMatter(file, fm => {
       fm.type = "quote-library-quote"; fm.id = record.id; fm.quote_text = record.text; fm.quote_author = record.author; fm.quote_source = record.source;
       fm.quote_pin = record.pinned; fm.quote_archive = record.archived; fm.topics = record.topics; fm.tags = ["quote"]; fm.aliases = record.aliases;
@@ -155,7 +183,7 @@ export class QuoteRepository {
       id: scalar(fm.id), path: file.path, text, author: normalizeName(scalar(fm.quote_author)), source: normalizeName(scalar(fm.quote_source)),
       pinned: bool(fm.quote_pin), archived: bool(fm.quote_archive), topics: stableNames(strings(fm.topics)), aliases: strings(fm.aliases),
       created, updated: scalar(fm.updated) || scalar(fm.last_updated) || isoMinute(new Date(file.stat.mtime)), notes: bodySection(parsed.body, "Personal notes"),
-      legacy: scalar(fm.type) !== "quote-library-quote" || !isShortRecordId(scalar(fm.id)), duplicateOf: scalar(fm.quote_duplicate_of), duplicateKept: bool(fm.quote_duplicate_keep)
+      legacy: scalar(fm.type) !== "quote-library-quote" || !isShortRecordId(scalar(fm.id), this.settings.power.naming.quoteIdPrefix), duplicateOf: scalar(fm.quote_duplicate_of), duplicateKept: bool(fm.quote_duplicate_keep)
     };
   }
 
@@ -164,7 +192,7 @@ export class QuoteRepository {
   }
   private async ensureTopic(name: string): Promise<TopicRecord> {
     await this.initialize(); const normalized = normalizeName(name); const topics = await this.getTopics(); const existing = topics.find(topic => topicKey(topic.name) === topicKey(normalized)); if (existing) return existing;
-    const now = isoMinute(); const topic: TopicRecord = { id: availableRecordId("TPC", `${now}:${normalized}`, new Set(topics.map(item => item.id).filter(Boolean))), name: normalized, status: "active", aliases: [], path: normalizePath(`${this.topicsFolder}/${safeFilename(normalized)}.md`), created: now, updated: now };
+    const now = isoMinute(); const topic: TopicRecord = { id: availableRecordId(this.settings.power.naming.topicIdPrefix, `${now}:${normalized}`, new Set(topics.map(item => item.id).filter(Boolean))), name: normalized, status: "active", aliases: [], path: normalizePath(`${this.topicsFolder}/${safeFilename(normalized)}.md`), created: now, updated: now };
     if (this.app.vault.getAbstractFileByPath(topic.path)) topic.path = normalizePath(`${this.topicsFolder}/${safeFilename(normalized)}-${topic.id.slice(-4)}.md`);
     await this.app.vault.create(topic.path, this.renderTopic(topic)); return topic;
   }
@@ -200,7 +228,15 @@ export class QuoteRepository {
     const existing = await this.app.vault.adapter.stat(path); if (existing?.type === "file") return; if (existing) throw new Error(`A folder is blocking the configured file: ${path}`);
     try { await this.app.vault.create(path, content); } catch (error) { if ((await this.app.vault.adapter.stat(path))?.type !== "file") throw error; }
   }
+  private async moveDuplicateToArchive(file: TFile): Promise<string> {
+    await this.ensureFolder(this.duplicateArchiveFolder);
+    if (sameOrInside(file.path, this.duplicateArchiveFolder)) return file.path;
+    const extension = file.extension ? `.${file.extension}` : ""; const base = safeFilename(file.basename); let destination = normalizePath(`${this.duplicateArchiveFolder}/${base}${extension}`); let index = 2;
+    while (this.app.vault.getAbstractFileByPath(destination)) destination = normalizePath(`${this.duplicateArchiveFolder}/${base}-${index++}${extension}`);
+    await this.app.fileManager.renameFile(file, destination); return destination;
+  }
   private async availablePath(base: string): Promise<string> { let path = normalizePath(`${this.quotesFolder}/${safeFilename(base)}.md`); let i = 2; while (this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${this.quotesFolder}/${safeFilename(base)}-${i++}.md`); return path; }
+  private quoteFilename(id: string, text: string): string { const excerpt = shortExcerpt(text, this.settings.power.naming.excerptLength); return this.settings.power.naming.filenameTemplate.replace(/\{id\}/g, id).replace(/\{excerpt\}/g, excerpt); }
 }
 
 function normalizeInput(input: QuoteInput): QuoteInput { return { ...input, text: input.text.trim(), author: normalizeName(input.author), source: normalizeName(input.source), topics: stableNames(input.topics), notes: input.notes.trim() }; }

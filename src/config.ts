@@ -1,7 +1,8 @@
 /* Upgrades settings and validates portable vault-relative storage and migration paths. */
 
-import type { LibraryLayoutSettings, MigrationDefaults, MigrationRunStatus, QuoteLibrarySettings } from "./types";
-import { DEFAULT_LAYOUT, DEFAULT_SETTINGS } from "./types";
+import type { LibraryLayoutSettings, MigrationDefaults, MigrationRunStatus, QuoteLibrarySettings, QuotePowerSettings } from "./types";
+import { DEFAULT_LAYOUT, DEFAULT_POWER, DEFAULT_SETTINGS } from "./types";
+import { normalizeQuotePath } from "./foundation";
 
 type LegacySettings = { rootFolder?: string; backupFolder?: string; preferPinnedForDaily?: boolean; migrationPhase?: string; latestJournalPath?: string; previewSignature?: string };
 
@@ -10,21 +11,34 @@ export function upgradeSettings(value: unknown): QuoteLibrarySettings {
   if (!Object.keys(stored).length) return clone(DEFAULT_SETTINGS);
   const legacy = stored as LegacySettings; const root = cleanFolder(legacy.rootFolder || DEFAULT_LAYOUT.rootFolder); const backup = cleanFolder(legacy.backupFolder || DEFAULT_LAYOUT.backupFolder);
   const history = legacy.latestJournalPath ? [{ id: "legacy-run", created: "", status: legacyStatus(legacy.migrationPhase), mode: "in-place" as const, sourceFolder: root, targetFolder: root, profileName: "Quote Library legacy", previewSignature: legacy.previewSignature || "", journalPath: cleanFile(legacy.latestJournalPath), total: 0, failures: 0 }] : [];
-  return { settingsVersion: 2, layout: { ...DEFAULT_LAYOUT, rootFolder: root, quotesFolder: "", backupFolder: backup }, preferPinnedForDaily: legacy.preferPinnedForDaily !== false, migrationDefaults: { ...DEFAULT_SETTINGS.migrationDefaults, sourceFolder: root, mode: "in-place" }, customProfiles: [], activeMigrationRunId: history[0]?.id || "", migrationHistory: history };
+  return { settingsVersion: 2, layout: { ...DEFAULT_LAYOUT, rootFolder: root, quotesFolder: "", backupFolder: backup }, preferPinnedForDaily: legacy.preferPinnedForDaily !== false, canonicalUpgrade: { ...DEFAULT_SETTINGS.canonicalUpgrade }, migrationDefaults: { ...DEFAULT_SETTINGS.migrationDefaults, sourceFolder: root, mode: "in-place" }, customProfiles: [], activeMigrationRunId: history[0]?.id || "", migrationHistory: history, power: clone(DEFAULT_POWER) };
 }
 
 function mergeV2(stored: Partial<QuoteLibrarySettings>): QuoteLibrarySettings {
-  const layout = { ...DEFAULT_LAYOUT, ...(stored.layout ?? {}) }; const migration = { ...DEFAULT_SETTINGS.migrationDefaults, ...(stored.migrationDefaults ?? {}) };
-  return { settingsVersion: 2, layout: { rootFolder: cleanFolder(layout.rootFolder), quotesFolder: cleanOptionalFolder(layout.quotesFolder), topicsFolder: cleanFolder(layout.topicsFolder), indexFile: cleanMarkdownFile(layout.indexFile), backupFolder: cleanFolder(layout.backupFolder) }, preferPinnedForDaily: stored.preferPinnedForDaily !== false, migrationDefaults: { sourceFolder: cleanOptionalFolder(migration.sourceFolder), recursive: migration.recursive !== false, mode: migration.mode === "in-place" ? "in-place" : "copy", profileId: String(migration.profileId || "quote-library-legacy"), excludedPaths: stringArray(migration.excludedPaths).map(cleanFile) }, customProfiles: Array.isArray(stored.customProfiles) ? stored.customProfiles : [], activeMigrationRunId: String(stored.activeMigrationRunId || ""), migrationHistory: Array.isArray(stored.migrationHistory) ? stored.migrationHistory : [] };
+  const layout = { ...DEFAULT_LAYOUT, ...(stored.layout ?? {}) }; const migration = { ...DEFAULT_SETTINGS.migrationDefaults, ...(stored.migrationDefaults ?? {}) }; const canonical = { ...DEFAULT_SETTINGS.canonicalUpgrade, ...(stored.canonicalUpgrade ?? {}) };
+  const power = mergePower(stored.power);
+  return { settingsVersion: 2, layout: { rootFolder: cleanFolder(layout.rootFolder), quotesFolder: cleanOptionalFolder(layout.quotesFolder), topicsFolder: cleanFolder(layout.topicsFolder), duplicateArchiveFolder: cleanFolder(layout.duplicateArchiveFolder), indexFile: cleanMarkdownFile(layout.indexFile), backupFolder: cleanFolder(layout.backupFolder) }, preferPinnedForDaily: stored.preferPinnedForDaily !== false, canonicalUpgrade: { includeArchivedDuplicates: canonical.includeArchivedDuplicates !== false, cleanupKnownLegacyBody: canonical.cleanupKnownLegacyBody !== false, modernizeFilenames: canonical.modernizeFilenames === true }, migrationDefaults: { sourceFolder: cleanOptionalFolder(migration.sourceFolder), recursive: migration.recursive !== false, mode: migration.mode === "in-place" ? "in-place" : "copy", profileId: String(migration.profileId || "quote-library-legacy"), excludedPaths: stringArray(migration.excludedPaths).map(cleanFile) }, customProfiles: Array.isArray(stored.customProfiles) ? stored.customProfiles : [], activeMigrationRunId: String(stored.activeMigrationRunId || ""), migrationHistory: Array.isArray(stored.migrationHistory) ? stored.migrationHistory : [], power };
 }
 
-export function layoutPaths(layout: LibraryLayoutSettings): { root: string; quotes: string; topics: string; index: string; backup: string } {
-  const root = cleanFolder(layout.rootFolder); return { root, quotes: join(root, cleanOptionalFolder(layout.quotesFolder)), topics: join(root, cleanFolder(layout.topicsFolder)), index: join(root, cleanMarkdownFile(layout.indexFile)), backup: cleanFolder(layout.backupFolder) };
+function mergePower(value: unknown): QuotePowerSettings {
+  const raw = object(value); const naming = object(raw.naming); const taxonomy = object(raw.taxonomy); const defaults = object(raw.defaults); const dashboard = object(raw.dashboard); const automation = object(raw.automation); const privacy = object(raw.privacy);
+  return { naming: { ...DEFAULT_POWER.naming, quoteIdPrefix: String(naming.quoteIdPrefix || DEFAULT_POWER.naming.quoteIdPrefix).replace(/[^A-Za-z0-9_-]/g, "-"), topicIdPrefix: String(naming.topicIdPrefix || DEFAULT_POWER.naming.topicIdPrefix).replace(/[^A-Za-z0-9_-]/g, "-"), filenameTemplate: String(naming.filenameTemplate || DEFAULT_POWER.naming.filenameTemplate), excerptLength: clampNumber(naming.excerptLength, 20, 120, DEFAULT_POWER.naming.excerptLength), collisionSuffix: String(naming.collisionSuffix || DEFAULT_POWER.naming.collisionSuffix) }, taxonomy: { normalizeAuthors: taxonomy.normalizeAuthors !== false, normalizeSources: taxonomy.normalizeSources !== false, allowArchivedTopics: taxonomy.allowArchivedTopics !== false }, defaults: { defaultPinned: defaults.defaultPinned === true, defaultArchived: defaults.defaultArchived === true, recentCount: clampNumber(defaults.recentCount, 1, 50, DEFAULT_POWER.defaults.recentCount), showArchivedPinned: defaults.showArchivedPinned !== false, qotdPinnedFirst: defaults.qotdPinnedFirst !== false }, dashboard: { startup: dashboard.startup === true, autoRefreshSeconds: clampNumber(dashboard.autoRefreshSeconds, 0, 3600, DEFAULT_POWER.dashboard.autoRefreshSeconds), compact: dashboard.compact === true, defaultTab: ["overview", "all", "topics", "authors", "sources", "archive"].includes(String(dashboard.defaultTab)) ? dashboard.defaultTab as QuotePowerSettings["dashboard"]["defaultTab"] : "overview", cardColumns: Number(dashboard.cardColumns) === 1 ? 1 : 2 }, automation: { refreshOnFileChange: automation.refreshOnFileChange !== false, summaryDebounceMs: clampNumber(automation.summaryDebounceMs, 100, 5000, DEFAULT_POWER.automation.summaryDebounceMs), backgroundNotices: automation.backgroundNotices !== false }, privacy: { showReminder: privacy.showReminder !== false } };
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number { const numeric = Number(value); return Number.isFinite(numeric) ? Math.min(max, Math.max(min, numeric)) : fallback; }
+
+export function layoutPaths(layout: LibraryLayoutSettings): { root: string; quotes: string; topics: string; duplicateArchive: string; index: string; backup: string } {
+  const root = cleanFolder(layout.rootFolder); const quotes = join(root, cleanOptionalFolder(layout.quotesFolder)); return { root, quotes, topics: join(root, cleanFolder(layout.topicsFolder)), duplicateArchive: join(quotes, cleanFolder(layout.duplicateArchiveFolder)), index: join(root, cleanMarkdownFile(layout.indexFile)), backup: cleanFolder(layout.backupFolder) };
+}
+
+export function isQuoteRecordPath(path: string, paths: ReturnType<typeof layoutPaths>, includeDuplicateArchive = false): boolean {
+  return sameOrInside(path, paths.quotes) && !sameOrInside(path, paths.topics) && !sameOrInside(path, paths.backup) && (includeDuplicateArchive || !sameOrInside(path, paths.duplicateArchive)) && path !== paths.index;
 }
 
 export function validateLayout(layout: LibraryLayoutSettings): string[] {
   const failures: string[] = []; let paths: ReturnType<typeof layoutPaths>; try { paths = layoutPaths(layout); } catch (error) { return [message(error)]; }
   if (paths.quotes !== paths.root && (sameOrInside(paths.topics, paths.quotes) || sameOrInside(paths.quotes, paths.topics))) failures.push("Quotes and Topics locations must not overlap.");
+  if (sameOrInside(paths.topics, paths.duplicateArchive) || sameOrInside(paths.duplicateArchive, paths.topics)) failures.push("The duplicate archive and Topics locations must not overlap.");
   if (sameOrInside(paths.backup, paths.quotes) || sameOrInside(paths.quotes, paths.backup)) failures.push("The backup folder must not overlap the Quotes location.");
   if (paths.quotes !== paths.root && paths.index.startsWith(`${paths.quotes}/`)) failures.push("The index file must be outside the Quotes location.");
   return failures;
@@ -44,7 +58,7 @@ export function cleanFile(value: string): string { return clean(value); }
 export function join(parent: string, child: string): string { return child ? `${parent}/${child}` : parent; }
 export function sameOrInside(path: string, parent: string): boolean { const left = path.toLocaleLowerCase(); const right = parent.toLocaleLowerCase(); return left === right || left.startsWith(`${right}/`); }
 
-function clean(value: string): string { const raw = String(value ?? "").trim(); if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(raw)) throw new Error("Paths must be vault-relative, not absolute."); const normalized = raw.replace(/\\/g, "/").replace(/\/+$/g, "").replace(/\/{2,}/g, "/"); if (normalized.split("/").some(part => !part || part === "." || part === "..")) throw new Error("Paths must be normal vault-relative paths."); return normalized; }
+function clean(value: string): string { const normalized = normalizeQuotePath(value).replace(/\/+$/g, ""); if (normalized.split("/").some(part => !part || part === "." || part === "..")) throw new Error("Paths must be normal vault-relative paths."); return normalized; }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.map(String).filter(Boolean) : []; }
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }

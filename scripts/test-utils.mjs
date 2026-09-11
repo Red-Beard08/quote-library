@@ -18,6 +18,7 @@ if (utils.quoteDisplayBody("A quote.", "Author").includes("Source") || utils.quo
 if (utils.quoteClipboardText("A quote.", "Author") !== "“A quote.” — Author") throw new Error("Copied quote rendering failed.");
 const reasons = utils.quoteAttentionReasons({ source: "", topics: [], legacy: true }); if (reasons.join("|") !== "Missing source metadata|No topics assigned|Legacy note format" || utils.quoteAttentionReasons({ source: "Book", topics: ["Faith"], legacy: false }).length) throw new Error("Attention reasons failed.");
 if (utils.duplicateKey("Same quote.", "Author") !== utils.duplicateKey(" Same  quote. ", "author")) throw new Error("Duplicate normalization failed.");
+if (utils.duplicateIdentityChanged("Same quote.", "Author", " Same  quote. ", "author") || !utils.duplicateIdentityChanged("Same quote.", "Author", "Different quote.", "Author")) throw new Error("Edit duplicate-identity detection failed.");
 if (utils.safeFilename('A / quote?') !== "A - quote-") throw new Error("Safe filename failed.");
 const shortId = utils.deterministicRecordId("QTE", "2026-08-16T13:05:20:quote");
 if (!/^QTE-[A-Z0-9]{4}$/.test(shortId) || shortId !== utils.deterministicRecordId("QTE", "2026-08-16T13:05:20:quote")) throw new Error("Short deterministic ID format failed.");
@@ -35,11 +36,16 @@ const original = "# Quote\n\nUser introduction.\n"; const once = utils.replaceMa
 if (once !== twice || !twice.includes("User introduction.")) throw new Error("Managed block idempotence or preservation failed.");
 if ((await utils.sha256(fixture("legacy-uppercase.md"))).length !== 64) throw new Error("SHA-256 helper failed.");
 
-const clean = config.upgradeSettings(null); if (clean.layout.quotesFolder !== "Quotes" || clean.layout.rootFolder !== "Quote Library") throw new Error("Clean-install layout defaults failed.");
+const clean = config.upgradeSettings(null); if (clean.layout.quotesFolder !== "Quotes" || clean.layout.rootFolder !== "Quote Library" || clean.layout.duplicateArchiveFolder !== "Archived Duplicates") throw new Error("Clean-install layout defaults failed.");
+if (!clean.canonicalUpgrade.includeArchivedDuplicates || !clean.canonicalUpgrade.cleanupKnownLegacyBody || clean.canonicalUpgrade.modernizeFilenames) throw new Error("Canonical-upgrade defaults failed.");
 if (clean.migrationDefaults.mode !== "copy" || clean.migrationDefaults.sourceFolder !== "Quote Imports" || config.validateMigration(clean.layout, clean.migrationDefaults).length) throw new Error("Clean-install migration defaults failed.");
+const configuredUpgrade = config.upgradeSettings({ ...clean, canonicalUpgrade: { includeArchivedDuplicates: false, cleanupKnownLegacyBody: false, modernizeFilenames: true } });
+if (configuredUpgrade.canonicalUpgrade.includeArchivedDuplicates || configuredUpgrade.canonicalUpgrade.cleanupKnownLegacyBody || !configuredUpgrade.canonicalUpgrade.modernizeFilenames) throw new Error("Canonical-upgrade settings were not preserved.");
 const upgraded = config.upgradeSettings({ rootFolder: "Existing Quotes", backupFolder: "Existing Backups", migrationPhase: "verified", latestJournalPath: "Existing Backups/run/Migration Journal.json" });
 if (upgraded.layout.rootFolder !== "Existing Quotes" || upgraded.layout.quotesFolder !== "" || upgraded.migrationHistory[0]?.status !== "verified") throw new Error("Legacy settings upgrade failed.");
 if (!config.validateLayout({ ...clean.layout, backupFolder: "Quote Library/Quotes/Backups" }).length) throw new Error("Overlapping backup validation failed.");
+const cleanPaths = config.layoutPaths(clean.layout);
+if (!config.isQuoteRecordPath("Quote Library/Quotes/QTE-ABCD - Example.md", cleanPaths) || config.isQuoteRecordPath("Quote Library/Quotes/Archived Duplicates/QTE-WXYZ.md", cleanPaths) || !config.isQuoteRecordPath("Quote Library/Quotes/Archived Duplicates/QTE-WXYZ.md", cleanPaths, true) || config.isQuoteRecordPath("Quote Library/Topics/Faith.md", cleanPaths) || config.isQuoteRecordPath("Quote Library/Quote Library Index.md", cleanPaths)) throw new Error("Duplicate-archive record filtering failed.");
 for (const invalid of ["C:\\Users\\Example", "/absolute/path", "Folder/../Other"]) { let rejected = false; try { config.cleanFolder(invalid); } catch { rejected = true; } if (!rejected) throw new Error(`Unsafe path was accepted: ${invalid}`); }
 
 const legacyCandidate = profileTools.extractCandidate(fixture("legacy-uppercase.md"), profileTools.LEGACY_PROFILE, "Legacy/example.md", Date.now(), Date.now());

@@ -1,0 +1,37 @@
+{
+  "captured": "2026-09-09",
+  "vaultRoot": "configured quote root",
+  "installedPlugin": {
+    "id": "quote-library",
+    "version": "1.2.11",
+    "settingsFile": ".obsidian/plugins/quote-library/data.json",
+    "settingsReadable": true,
+    "settings": {
+      "settingsVersion": 2,
+      "rootFolder": "configured local quote root",
+      "quotesFolder": "Quotes",
+      "topicsFolder": "Topics",
+      "duplicateArchiveFolder": "Archived Duplicates",
+      "backupFolder": "configured backup folder",
+      "preferPinnedForDaily": true,
+      "canonicalUpgrade": { "includeArchivedDuplicates": true, "cleanupKnownLegacyBody": true, "modernizeFilenames": true },
+      "migration": { "sourceFolder": "Quote Imports", "recursive": true, "mode": "copy", "profileId": "quote-library-legacy" },
+      "migrationHistory": [{ "id": "MIG-AKVY", "status": "verified", "mode": "in-place", "total": 19, "failures": 0 }]
+    }
+  },
+  "quoteNotes": {
+    "totalDiscovered": 75,
+    "canonicalTypeCount": 75,
+    "archivedFlagged": 53,
+    "pinned": 5,
+    "missingIds": 0,
+    "unreadableDuringDirectScan": 18,
+    "duplicateIdGroups": 18,
+    "duplicateIds": ["QTE-01MB", "QTE-12LO", "QTE-2I9G", "QTE-3SGP", "QTE-4NVE", "QTE-56WP", "QTE-7ZD5", "QTE-91B8", "QTE-CROM", "QTE-DUNB", "QTE-ISUZ", "QTE-KKR1", "QTE-L39M", "QTE-MAND", "QTE-NN5W", "QTE-PY4Y", "QTE-UHIV", "QTE-Y6F1"]
+  },
+  "notes": [
+    "No quote notes were modified by the compatibility freeze.",
+    "Archived duplicates remain a data-quality issue for the review workflow.",
+    "Homepage and command compatibility are verified by preserving existing command IDs and the installed plugin manifest."
+  ]
+}

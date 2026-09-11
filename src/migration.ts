@@ -4,8 +4,9 @@ import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { cleanFolder, sameOrInside, validateMigration } from "./config";
 import { QuoteRepository } from "./repository";
 import { extractCandidate, LEGACY_PROFILE, profileById } from "./profiles";
-import type { MigrationIssue, MigrationJournal, MigrationJournalV2, MigrationPreview, MigrationProfile, MigrationRunSummary, QuoteLibrarySettings, QuoteRecord, VerificationResult } from "./types";
+import type { CanonicalUpgradePreview, CanonicalUpgradeResult, MigrationIssue, MigrationJournal, MigrationJournalV2, MigrationPreview, MigrationProfile, MigrationRunSummary, QuoteLibrarySettings, QuoteRecord, VerificationResult } from "./types";
 import { availableRecordId, bodySection, contentHash, duplicateKey, isShortRecordId, isoMinute, normalizeName, safeFilename, sha256, shortExcerpt, textDuplicateKey } from "./utils";
+import { writeTextIfChanged } from "./foundation-vendor";
 
 interface Candidate { file: TFile; record: QuoteRecord; issues: string[]; confidence: "high" | "manual"; bodyConvertible: boolean; proposedId: string; destinationPath: string; exactDuplicatePath: string; }
 interface Analysis { preview: MigrationPreview; candidates: Candidate[]; profile: MigrationProfile; source: string; }
@@ -13,6 +14,34 @@ interface Analysis { preview: MigrationPreview; candidates: Candidate[]; profile
 export class QuoteMigration {
   constructor(private app: App, private repository: QuoteRepository, private settings: QuoteLibrarySettings, private saveSettings: () => Promise<void>) {}
   updateSettings(settings: QuoteLibrarySettings): void { this.settings = settings; }
+
+  async previewCanonicalUpgrade(): Promise<CanonicalUpgradePreview> {
+    const includeArchived = this.settings.canonicalUpgrade.includeArchivedDuplicates; const quotes = await this.repository.getQuotes({ includeDuplicateArchive: includeArchived }); const legacy = quotes.filter(quote => quote.legacy);
+    const candidates = legacy.filter(quote => includeArchived || !sameOrInside(quote.path, this.repository.duplicateArchiveFolder));
+    return { totalQuotes: quotes.length, legacyQuotes: candidates.length, alreadyCanonical: quotes.length - legacy.length, excludedArchivedDuplicates: legacy.length - candidates.length, paths: candidates.map(quote => quote.path) };
+  }
+
+  async upgradeCanonical(): Promise<CanonicalUpgradeResult> {
+    const includeArchived = this.settings.canonicalUpgrade.includeArchivedDuplicates; const quotes = await this.repository.getQuotes({ includeDuplicateArchive: includeArchived });
+    const selected = quotes.filter(quote => quote.legacy && (includeArchived || !sameOrInside(quote.path, this.repository.duplicateArchiveFolder)));
+    if (!selected.length) return { upgraded: 0, renamed: 0, failures: [], journalPath: "" };
+    const used = new Set(quotes.filter(quote => !selected.some(item => item.path === quote.path)).map(quote => quote.id).filter(id => isShortRecordId(id))); const assigned = new Set<string>();
+    const records = selected.map(record => {
+      const uniqueCurrent = isShortRecordId(record.id, this.settings.power.naming.quoteIdPrefix) && quotes.filter(quote => quote.id === record.id).length === 1 && !assigned.has(record.id); const id = uniqueCurrent ? record.id : availableRecordId(this.settings.power.naming.quoteIdPrefix, `${record.created}:${record.path}:${record.text}`, new Set([...used, ...assigned])); assigned.add(id);
+      return { ...record, id, updated: isoMinute() };
+    });
+    const run = this.newSummary("canonical-upgrade", "in-place", this.repository.quotesFolder, this.repository.quotesFolder, "Canonical upgrade", records.length); const analysis = this.recordsAnalysis(run.id, records, LEGACY_PROFILE); const journal = await this.backupCandidates(run, analysis, "canonical-upgrade"); let renamed = 0; const failures: string[] = [];
+    for (let index = 0; index < journal.entries.length; index++) {
+      const entry = journal.entries[index]; const record = records.find(item => item.path === entry.sourcePath);
+      try {
+        if (!record) throw new Error("The quote disappeared after backup."); await this.repository.writeQuote(record, this.settings.canonicalUpgrade.cleanupKnownLegacyBody); let destination = record.path;
+        if (this.settings.canonicalUpgrade.modernizeFilenames) { const file = this.file(record.path); if (!file) throw new Error("The upgraded quote could not be found."); destination = await this.availableDestination(`${record.id} - ${shortExcerpt(record.text, this.settings.power.naming.excerptLength)}`, file.path); if (destination !== file.path) { await this.app.fileManager.renameFile(file, destination); renamed++; } }
+        const upgraded = this.file(destination); if (!upgraded) throw new Error("The upgraded quote could not be found."); const parsed = await this.repository.readQuote(upgraded); if (!parsed || parsed.legacy || !isShortRecordId(parsed.id)) throw new Error("The note did not validate as canonical."); entry.status = this.settings.canonicalUpgrade.modernizeFilenames ? "renamed" : "migrated"; entry.destinationPath = destination; entry.destinationHash = await this.hashFile(destination);
+      } catch (error) { entry.status = "failed"; entry.error = message(error); failures.push(`${entry.sourcePath}: ${entry.error}`); }
+      await this.writeJournal(journal);
+    }
+    run.status = failures.length ? "failed" : "verified"; run.failures = failures.length; run.journalPath = journalPath(journal); this.upsertRun(run); this.settings.activeMigrationRunId = run.id; await this.saveSettings(); await this.repository.rebuildSummaries(); return { upgraded: journal.entries.length - failures.length, renamed, failures, journalPath: run.journalPath };
+  }
 
   async preview(runId = this.activeRun()?.id || this.newRunId()): Promise<MigrationPreview> { return (await this.analyze(runId)).preview; }
 
@@ -50,7 +79,7 @@ export class QuoteMigration {
       if (await sha256(await this.app.vault.cachedRead(backup)) !== entry.backupHash) failures.push(`Backup hash mismatch: ${entry.backupPath}`);
       if (entry.status === "skipped") continue; const destination = this.file(entry.destinationPath || entry.sourcePath); if (!destination) { failures.push(`Missing destination: ${entry.destinationPath || entry.sourcePath}`); continue; }
       const quote = await this.repository.readQuote(destination); if (!quote) { failures.push(`Destination is not a canonical quote: ${destination.path}`); continue; }
-      if (quote.id !== entry.proposedId || !isShortRecordId(quote.id)) failures.push(`Invalid ID: ${destination.path}`);
+      if (quote.id !== entry.proposedId || !isShortRecordId(quote.id, this.settings.power.naming.quoteIdPrefix)) failures.push(`Invalid ID: ${destination.path}`);
       if (quote.text !== entry.originalText || normalizeName(quote.author) !== normalizeName(entry.originalAuthor)) failures.push(`Text or author changed: ${destination.path}`);
     }
     const valid = failures.length === 0; if (valid) { run.status = "verified"; run.failures = 0; this.upsertRun(run); await this.saveSettings(); checks.push("Migration verified and filename modernization unlocked."); } return { valid, checks, failures };
@@ -58,7 +87,7 @@ export class QuoteMigration {
 
   async modernizeFilenames(): Promise<MigrationJournalV2> {
     const parent = this.requireRun("verified", "filenames-modernized"); const quotes = await this.repository.getQuotes(); const profile = profileById(this.settings.customProfiles, this.settings.migrationDefaults.profileId); const run = this.newSummary("filenames", parent.mode, this.repository.quotesFolder, this.repository.quotesFolder, profile.name, quotes.length); const analysis = this.recordsAnalysis(run.id, quotes, profile); const journal = await this.backupCandidates(run, analysis, "filenames");
-    for (let index = 0; index < journal.entries.length; index++) { const entry = journal.entries[index]; try { const quote = quotes.find(item => item.path === entry.sourcePath); if (!quote?.id) throw new Error("The quote is missing its stable ID."); const file = this.file(quote.path); if (!file) throw new Error("The quote note could not be found."); const destination = await this.availableDestination(`${quote.id} - ${shortExcerpt(quote.text)}`, file.path); if (destination !== file.path) await this.app.fileManager.renameFile(file, destination); entry.destinationPath = destination; entry.destinationHash = await this.hashFile(destination); entry.status = "renamed"; } catch (error) { entry.status = "failed"; entry.error = message(error); } await this.writeJournal(journal); }
+    for (let index = 0; index < journal.entries.length; index++) { const entry = journal.entries[index]; try { const quote = quotes.find(item => item.path === entry.sourcePath); if (!quote?.id) throw new Error("The quote is missing its stable ID."); const file = this.file(quote.path); if (!file) throw new Error("The quote note could not be found."); const destination = await this.availableDestination(`${quote.id} - ${shortExcerpt(quote.text, this.settings.power.naming.excerptLength)}`, file.path); if (destination !== file.path) await this.app.fileManager.renameFile(file, destination); entry.destinationPath = destination; entry.destinationHash = await this.hashFile(destination); entry.status = "renamed"; } catch (error) { entry.status = "failed"; entry.error = message(error); } await this.writeJournal(journal); }
     run.status = "filenames-modernized"; run.journalPath = journalPath(journal); run.failures = journal.entries.filter(entry => entry.status === "failed").length; this.upsertRun(run); this.settings.activeMigrationRunId = run.id; await this.saveSettings(); await this.repository.rebuildSummaries(); return journal;
   }
 
@@ -83,7 +112,7 @@ export class QuoteMigration {
     for (const file of files) {
       if (defaults.excludedPaths.includes(file.path)) { excluded++; continue; } let content = ""; try { content = await this.app.vault.cachedRead(file); } catch { unreadable++; items.push({ path: file.path, issues: ["unreadable"], proposedId: "", destinationPath: "", bodyConvertible: false, confidence: "manual" }); continue; }
       const extracted = extractCandidate(content, profile, file.path, file.stat.ctime, file.stat.mtime); if (!extracted) { excluded++; continue; } const record = extracted.record; const issues = [...extracted.issues]; if (!record.id) issues.push("missing-id"); else if (!isShortRecordId(record.id)) issues.push("long-id"); if (record.legacy) issues.push("missing-type"); if (record.pinned && record.archived) issues.push("pinned-and-archived"); if (!record.topics.length) issues.push("unassigned-topic");
-      const sameRecord = existing.find(quote => quote.path === record.path); const canKeepId = isShortRecordId(record.id) && !assigned.has(record.id) && (!reserved.has(record.id) || sameRecord?.id === record.id); const proposedId = canKeepId ? record.id : availableRecordId("QTE", `${record.created}:${record.path}:${record.text}`, new Set([...reserved, ...assigned])); assigned.add(proposedId);
+      const sameRecord = existing.find(quote => quote.path === record.path); const canKeepId = isShortRecordId(record.id, this.settings.power.naming.quoteIdPrefix) && !assigned.has(record.id) && (!reserved.has(record.id) || sameRecord?.id === record.id); const proposedId = canKeepId ? record.id : availableRecordId(this.settings.power.naming.quoteIdPrefix, `${record.created}:${record.path}:${record.text}`, new Set([...reserved, ...assigned])); assigned.add(proposedId);
       const exact = existing.find(quote => duplicateKey(quote.text, quote.author) === duplicateKey(record.text, record.author)); if (exact && defaults.mode === "copy") issues.push("exact-duplicate");
       const destinationPath = defaults.mode === "copy" ? this.plannedDestination(proposedId, record.text, plannedPaths) : file.path; const confidence = extracted.confidence; candidates.push({ file, record, issues, confidence, bodyConvertible: extracted.bodyConvertible, proposedId, destinationPath, exactDuplicatePath: exact?.path || "" }); items.push({ path: file.path, issues, proposedId, destinationPath, bodyConvertible: extracted.bodyConvertible, confidence });
     }
@@ -103,8 +132,8 @@ export class QuoteMigration {
     await this.writeJournal(journal); run.journalPath = journalPath(journal); this.upsertRun(run); await this.saveSettings(); return journal;
   }
 
-  private sourceFiles(source: string, recursive: boolean): TFile[] { return this.app.vault.getMarkdownFiles().filter(file => { if (!sameOrInside(file.path, source) || sameOrInside(file.path, this.repository.paths.backup) || sameOrInside(file.path, this.repository.topicsFolder) || file.path === this.repository.indexPath) return false; const relative = file.path.slice(source.length).replace(/^\//, ""); return recursive || !relative.includes("/"); }).sort((a, b) => a.path.localeCompare(b.path)); }
-  private plannedDestination(id: string, text: string, planned: Set<string>): string { const base = `${this.repository.quotesFolder}/${safeFilename(`${id} - ${shortExcerpt(text)}`)}`; let path = normalizePath(`${base}.md`); let index = 2; while (planned.has(path) || this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${base}-${index++}.md`); planned.add(path); return path; }
+  private sourceFiles(source: string, recursive: boolean): TFile[] { return this.app.vault.getMarkdownFiles().filter(file => { if (!sameOrInside(file.path, source) || sameOrInside(file.path, this.repository.paths.backup) || sameOrInside(file.path, this.repository.topicsFolder) || sameOrInside(file.path, this.repository.duplicateArchiveFolder) || file.path === this.repository.indexPath) return false; const relative = file.path.slice(source.length).replace(/^\//, ""); return recursive || !relative.includes("/"); }).sort((a, b) => a.path.localeCompare(b.path)); }
+  private plannedDestination(id: string, text: string, planned: Set<string>): string { const excerpt = shortExcerpt(text, this.settings.power.naming.excerptLength); const template = this.settings.power.naming.filenameTemplate.replace(/\{id\}/g, id).replace(/\{excerpt\}/g, excerpt); const base = `${this.repository.quotesFolder}/${safeFilename(template)}`; let path = normalizePath(`${base}.md`); let index = 2; while (planned.has(path) || this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${base}-${index++}.md`); planned.add(path); return path; }
   private newRunId(): string { return availableRecordId("MIG", `${Date.now()}:${this.settings.migrationHistory.length}`, new Set(this.settings.migrationHistory.map(run => run.id))); }
   private newSummary(seed: string, mode: "copy" | "in-place", source: string, target: string, profileName: string, total: number): MigrationRunSummary { return { id: availableRecordId("MIG", `${seed}:${Date.now()}`, new Set(this.settings.migrationHistory.map(run => run.id))), created: isoMinute(), status: "previewed", mode, sourceFolder: source, targetFolder: target, profileName, previewSignature: "", journalPath: "", total, failures: 0 }; }
   private activeRun(): MigrationRunSummary | undefined { return this.runById(this.settings.activeMigrationRunId); }
@@ -113,7 +142,7 @@ export class QuoteMigration {
   private upsertRun(run: MigrationRunSummary): void { const index = this.settings.migrationHistory.findIndex(item => item.id === run.id); if (index >= 0) this.settings.migrationHistory[index] = run; else this.settings.migrationHistory.unshift(run); }
   private async availableBackupRoot(base: string): Promise<string> { let path = normalizePath(`${this.repository.paths.backup}/${safeFilename(base)}`); let index = 2; while (this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${this.repository.paths.backup}/${safeFilename(base)}-${index++}`); await this.ensureFolder(path); return path; }
   private async availableDestination(base: string, current: string): Promise<string> { let path = normalizePath(`${this.repository.quotesFolder}/${safeFilename(base)}.md`); let index = 2; while (path !== current && this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${this.repository.quotesFolder}/${safeFilename(base)}-${index++}.md`); return path; }
-  private async writeJournal(journal: MigrationJournalV2): Promise<void> { const path = journalPath(journal); const content = JSON.stringify(journal, null, 2); const file = this.file(path); if (file) await this.app.vault.process(file, () => content); else await this.app.vault.create(path, content); }
+  private async writeJournal(journal: MigrationJournalV2): Promise<void> { const path = journalPath(journal); const content = JSON.stringify(journal, null, 2); const file = this.file(path); if (file) await writeTextIfChanged(this.app.vault, file, content); else await this.app.vault.create(path, content); }
   private async readJournal(path: string): Promise<MigrationJournal> { const file = this.file(path); if (!file) throw new Error("The migration journal could not be found."); try { const value = JSON.parse(await this.app.vault.cachedRead(file)) as MigrationJournal; if (value.version !== 1 && value.version !== 2) throw new Error(); return value; } catch { throw new Error("The migration journal is malformed or unsupported."); } }
   private async hashFile(path: string): Promise<string> { const file = this.file(path); if (!file) throw new Error(`Cannot hash missing file: ${path}`); return sha256(await this.app.vault.cachedRead(file)); }
   private file(path: string): TFile | null { const item = this.app.vault.getAbstractFileByPath(normalizePath(path)); return item instanceof TFile ? item : null; }

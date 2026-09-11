@@ -1,6 +1,6 @@
 {
   "name": "quote-library",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "description": "A mobile-compatible, Markdown-first quote dashboard for Obsidian.",
   "main": "main.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "test": "npm run typecheck && npm run build && npm run test:utils && node scripts/validate-build.mjs && npm run test:portability"
   },
   "keywords": ["obsidian", "quotes", "dashboard", "markdown", "mobile"],
-  "author": "Corthon",
+  "author": "Red-Beard",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/Red-Beard08/quote-library.git" },
   "homepage": "https://github.com/Red-Beard08/quote-library#readme",
