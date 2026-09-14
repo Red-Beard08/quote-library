@@ -37,6 +37,7 @@ export default class QuoteLibraryPlugin extends Plugin {
     this.addCommand({ id: "rebuild-summaries", name: "Rebuild managed summaries", callback: () => void this.rebuildSummaries() });
      this.addCommand({ id: "restore-migration-backup", name: "Restore a migration backup", callback: () => this.openMigrationTools() });
      this.addCommand({ id: "refresh-dashboard", name: "Refresh dashboard", callback: () => void this.refreshDashboard() });
+     this.addCommand({ id: "refresh-library", name: "Refresh Quote Library", callback: () => void this.refreshLibrary() });
     this.addCommand({ id: "open-settings", name: "Open Quote Library settings", callback: () => this.openSettings() });
     this.addCommand({ id: "data-quality", name: "Review quote data quality", callback: () => this.openDataQuality() });
     this.addSettingTab(new QuoteLibrarySettingTab(this.app, this));
@@ -84,10 +85,17 @@ export default class QuoteLibraryPlugin extends Plugin {
   async verifyMigration(runId?: string) { const result = await this.migration.verify(runId); new Notice(result.valid ? "Migration verification passed." : `Migration verification found ${result.failures.length} problem(s).`); return result; }
   async modernizeFilenames() { return this.runBulk(async () => { const journal = await this.migration.modernizeFilenames(); const failed = journal.entries.filter(entry => entry.status === "failed").length; await this.afterMutation(`Filename modernization finished with ${failed} failure${failed === 1 ? "" : "s"}.`); return journal; }); }
   async restoreRun(runId: string) { return this.runBulk(async () => { const count = await this.migration.restoreRun(runId); await this.afterMutation(`${count} quote note${count === 1 ? "" : "s"} restored.`); return count; }); }
-  async rebuildSummaries(): Promise<void> { try { await this.repository.rebuildSummaries(); await this.refreshDashboard(); } catch (error) { console.error("Quote Library rebuild failed.", error); new Notice("Quote Library summaries could not be rebuilt."); } }
+  async rebuildSummaries(): Promise<void> { await this.refreshLibrary(); }
+  async refreshLibrary(showNotice = true): Promise<void> {
+    if (this.bulkOperation) return;
+    this.bulkOperation = true;
+    try { await this.repository.rebuildSummaries(); await this.refreshDashboard(); if (showNotice) new Notice("Quote Library refreshed: quotes, topics, authors, sources, and summaries are up to date."); }
+    catch (error) { console.error("Quote Library refresh failed.", error); if (showNotice) new Notice("Quote Library could not refresh its summaries."); }
+    finally { this.bulkOperation = false; }
+  }
   async refreshDashboard(): Promise<void> { try { const data = await this.repository.dashboard(); this.updateCaches(data); for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW)) if (leaf.view instanceof QuoteLibraryDashboard) await leaf.view.render(); } catch (error) { console.error("Quote Library dashboard refresh failed.", error); } }
   private async afterMutation(notice: string): Promise<void> { await this.refreshDashboard(); new Notice(notice); }
-  private handleVaultEvent(path: string): void { if (!this.settings.power.automation.refreshOnFileChange || this.bulkOperation || !sameOrInside(path, this.repository.root)) return; window.clearTimeout(this.refreshTimer); this.refreshTimer = window.setTimeout(() => void this.refreshDashboard(), this.settings.power.automation.summaryDebounceMs); }
+  private handleVaultEvent(path: string): void { if (!this.settings.power.automation.refreshOnFileChange || this.bulkOperation || !sameOrInside(path, this.repository.root)) return; window.clearTimeout(this.refreshTimer); this.refreshTimer = window.setTimeout(() => void this.refreshLibrary(false), this.settings.power.automation.summaryDebounceMs); }
   private registerWidgets(): void {
     for (const dispose of this.widgetDisposals) dispose(); this.widgetDisposals = [];
     const definitions: DashboardWidgetDefinition[] = [
