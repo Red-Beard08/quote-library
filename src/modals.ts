@@ -41,10 +41,12 @@ export class QuoteModal extends Modal {
     setting.addText(text => text.setPlaceholder(selected && !options.includes(selected) ? selected : `New ${label.toLocaleLowerCase()}`).setValue(selected && !options.includes(selected) ? selected : "").onChange(enter));
   }
   private topicSelector(): void {
-    const setting = new Setting(this.contentEl).setName("Existing topics").setDesc("Select every topic that applies."); setting.controlEl.empty();
+    const field = this.contentEl.createDiv({ cls: "quote-library-topic-field" });
+    field.createEl("h3", { text: "Existing topics" });
+    field.createEl("p", { text: "Select every topic that applies.", cls: "quote-library-muted" });
     const available = [...this.plugin.cachedTopics.filter(topic => topic.status === "active" || this.plugin.settings.power.taxonomy.allowArchivedTopics)];
     for (const name of this.selectedTopics) if (!available.some(topic => normalizeName(topic.name).toLocaleLowerCase() === normalizeName(name).toLocaleLowerCase())) available.push({ id: "", name, status: "archived", aliases: [], path: "", created: "", updated: "" });
-    const selector = setting.controlEl.createDiv({ cls: "quote-library-topic-selector" }); if (!available.length) selector.createSpan({ text: "No existing topics yet.", cls: "quote-library-muted" });
+    const selector = field.createDiv({ cls: "quote-library-topic-selector", attr: { role: "group", "aria-label": "Existing topics" } }); if (!available.length) selector.createSpan({ text: "No existing topics yet.", cls: "quote-library-muted" });
     for (const topic of available) { const label = selector.createEl("label", { cls: `quote-library-topic-option${topic.status === "archived" ? " is-archived" : ""}` }); const checkbox = label.createEl("input", { attr: { type: "checkbox" } }); checkbox.checked = [...this.selectedTopics].some(name => normalizeName(name).toLocaleLowerCase() === normalizeName(topic.name).toLocaleLowerCase()); checkbox.onchange = () => { if (checkbox.checked) this.selectedTopics.add(topic.name); else for (const value of this.selectedTopics) if (normalizeName(value).toLocaleLowerCase() === normalizeName(topic.name).toLocaleLowerCase()) this.selectedTopics.delete(value); }; label.createSpan({ text: topic.status === "archived" ? `${topic.name} (archived)` : topic.name }); }
   }
   private async submit(): Promise<void> {

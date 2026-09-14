@@ -49,9 +49,13 @@
 .quote-library-modal .modal-content { max-height: min(80dvh, 900px); overflow-y: auto; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .quote-library-modal-content { min-height: 0; max-height: calc(100dvh - 36px); overflow-y: auto; overflow-x: hidden; padding-bottom: calc(160px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
 .quote-library-modal textarea { width: min(100%, 560px); }
-.quote-library-topic-selector { display: flex; flex-wrap: wrap; gap: 8px; width: min(100%, 560px); }
-.quote-library-topic-option { display: inline-flex; gap: 7px; align-items: center; padding: 7px 10px; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: var(--background-secondary); cursor: pointer; }
-.quote-library-topic-option input { margin: 0; }
+.quote-library-topic-field { width: 100%; margin: 18px 0; padding: 14px 0 2px; border-top: 1px solid var(--background-modifier-border); }
+.quote-library-topic-field h3 { margin: 0 0 3px; font-size: 1rem; }
+.quote-library-topic-field > p { margin: 0 0 10px; }
+.quote-library-topic-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.quote-library-topic-option { display: flex; gap: 8px; align-items: flex-start; min-width: 0; padding: 9px 10px; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-secondary); cursor: pointer; line-height: 1.25; }
+.quote-library-topic-option span { min-width: 0; overflow-wrap: anywhere; }
+.quote-library-topic-option input { flex: 0 0 auto; width: 16px !important; min-width: 16px; height: 16px; margin: 2px 0 0 !important; }
 .quote-library-topic-option.is-archived { opacity: .7; }
 .quote-library-result, .quote-library-duplicate-card { margin-top: 14px; padding: 14px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-secondary); }
 .quote-library-duplicate-card { display: grid; gap: 5px; }
@@ -74,6 +78,8 @@
   .quote-library-overview-columns.is-two { grid-template-columns: 1fr; }
   .quote-library-modal .setting-item { display: block; }
   .quote-library-modal .setting-item-control { justify-content: flex-start; margin-top: 8px; }
+  .quote-library-topic-selector { grid-template-columns: 1fr; gap: 7px; }
+  .quote-library-topic-option { width: 100%; box-sizing: border-box; }
 }
 
 /* Keyboard-safe mobile modal scrolling */
