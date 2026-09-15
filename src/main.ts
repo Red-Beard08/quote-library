@@ -1,7 +1,7 @@
 /* Registers portable Quote Library views, commands, profiles, migrations, settings, and refresh handling. */
 
 import { Notice, Plugin, TFile } from "obsidian";
-import { registerDashboardWidget } from "./widget-bridge";
+import { registerDashboardModule, registerDashboardWidget } from "./widget-bridge";
 import type { DashboardWidgetDefinition } from "./widget-bridge";
 import { sameOrInside, upgradeSettings } from "./config";
 import { DASHBOARD_VIEW, QuoteLibraryDashboard } from "./dashboard";
@@ -115,3 +115,13 @@ export default class QuoteLibraryPlugin extends Plugin {
 function unique(values: string[]): string[] { return [...new Set(values)].sort((left, right) => left.localeCompare(right)); }
 function message(error: unknown): string { return error instanceof Error ? error.message : "Unknown startup error."; }
 export { DASHBOARD_VIEW };
+// Red-Beard Dashboard launcher module is owned by Quote Library.
+const rbQuoteDisposals = new WeakMap<object, () => void>();
+const rbQuoteOnload = QuoteLibraryPlugin.prototype.onload;
+QuoteLibraryPlugin.prototype.onload = async function(this: QuoteLibraryPlugin) {
+  await rbQuoteOnload.call(this);
+  const dispose = registerDashboardModule(this.app, { id: "quote-library", name: "Quote Library", command: "quote-library:open-dashboard", icon: "quote", description: "Browse and manage saved quotes.", order: 10 });
+  rbQuoteDisposals.set(this, dispose);
+};
+const rbQuoteOnunload = QuoteLibraryPlugin.prototype.onunload;
+QuoteLibraryPlugin.prototype.onunload = function(this: QuoteLibraryPlugin) { rbQuoteDisposals.get(this)?.(); return rbQuoteOnunload ? rbQuoteOnunload.call(this) : undefined; };
