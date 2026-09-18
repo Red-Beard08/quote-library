@@ -36,7 +36,6 @@ export class QuoteLibrarySettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Saved runs").setDesc(`${this.plugin.settings.migrationHistory.length} journaled migration run${this.plugin.settings.migrationHistory.length === 1 ? "" : "s"}.`).addButton(button => button.setButtonText("Open migration tools").onClick(() => this.plugin.openMigrationTools()));
 
     new Setting(containerEl).setName("Dashboard").setHeading();
-    new Setting(containerEl).setName("Prefer pinned daily quotes").setDesc("When active pinned quotes exist, choose Quote of the Day from them first.").addToggle(toggle => toggle.setValue(this.plugin.settings.preferPinnedForDaily).onChange(async value => { this.plugin.settings.preferPinnedForDaily = value; await this.plugin.saveSettings(); await this.plugin.refreshDashboard(); }));
     new Setting(containerEl).setName("Power-user defaults").setHeading();
     this.powerText("Quote ID prefix", "Stable IDs for new quote notes.", this.plugin.settings.power.naming.quoteIdPrefix, value => { this.plugin.settings.power.naming.quoteIdPrefix = value.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 20) || "QTE"; });
     this.powerText("Topic ID prefix", "Stable IDs for new topic notes.", this.plugin.settings.power.naming.topicIdPrefix, value => { this.plugin.settings.power.naming.topicIdPrefix = value.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 20) || "TPC"; });

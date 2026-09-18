@@ -14,7 +14,7 @@ Quote Library is a mobile-compatible Obsidian plugin for capturing, organizing, 
 ## Features
 
 - Overview, Topics, Authors, Sources, and Archive dashboard tabs
-- Stable Quote of the Day with optional pinned-quote preference
+- Stable Quote of the Day rotation across every active quote
 - Per-quote explanations for every Needs attention item
 - Search across quote text, author, source, topics, and personal notes
 - Add and edit forms with existing-value suggestions and freeform entry
@@ -174,10 +174,10 @@ Migration preserves pinned and archived as independent fields, does not infer to
 - **Duplicate archive subfolder:** location beneath Quotes for merged secondary records
 - **Index file:** managed Markdown filename stored at the library root
 - **Backup folder:** vault-relative migration backup location
-- **Prefer pinned Quote of the Day:** uses active pinned quotes when available
+- **Quote of the Day:** rotates deterministically through every active quote; pinned status does not restrict the rotation
 - **Power-user naming:** quote/topic prefixes, filename template, excerpt length, and collision policy for future records
 - **Power-user taxonomy:** conservative author/source normalization and archived-topic entry behavior
-- **Power-user defaults:** initial pin/archive state, recent-card count, archived pinned visibility, and Quote of the Day preference
+- **Power-user defaults:** initial pin/archive state, recent-card count, and archived pinned visibility
 - **Power-user dashboard:** startup preference, compact density, card columns, and automatic refresh policy
 - **Power-user automation:** refresh-on-change, debounce, and background-notice preferences
 - **Power-user privacy:** ordinary Markdown reminder visibility
