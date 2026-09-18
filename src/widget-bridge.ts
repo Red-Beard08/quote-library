@@ -7,7 +7,7 @@ export interface DashboardModuleDefinition { id: string; name: string; command: 
 function registerWithRetry<T>(app: App, method: "registerWidget" | "registerModule", definition: T): () => void {
   let dispose: () => void = () => undefined; let timer: number | undefined; let attempts = 0;
   const attempt = () => { const host = (app as App & { plugins?: { getPlugin?: (id: string) => unknown } }).plugins?.getPlugin?.("red-beard-dashboard") as Record<string, ((value: T) => (() => void)) | undefined> | undefined; const fn = host?.[method]; if (fn) { try { dispose = fn(definition) ?? (() => undefined); } catch { /* host unavailable */ } if (timer !== undefined) window.clearTimeout(timer); return; } if (attempts++ < 120) timer = window.setTimeout(attempt, 250); };
-  attempt(); return () => { if (timer !== undefined) window.clearTimeout(timer); dispose(); };
+  const onReady=()=>attempt(); window.addEventListener("red-beard-dashboard-ready",onReady); attempt(); return () => { if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener("red-beard-dashboard-ready",onReady); dispose(); };
 }
 
 /** Optional Red-Beard Dashboard bridge; Quote Library remains fully functional without the host. */
