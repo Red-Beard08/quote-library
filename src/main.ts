@@ -4,7 +4,7 @@ import { Notice, Plugin, TFile } from "obsidian";
 import { registerDashboardModule, registerDashboardWidget } from "./widget-bridge";
 import type { DashboardWidgetDefinition } from "./widget-bridge";
 import { sameOrInside, upgradeSettings } from "./config";
-import { DASHBOARD_VIEW, QuoteLibraryDashboard } from "./dashboard";
+import { copyQuote, DASHBOARD_VIEW, QuoteLibraryDashboard } from "./dashboard";
 import { CanonicalUpgradeModal, DataQualityModal, DuplicateReviewModal, MigrationModal, ProfileManagerModal, QuoteModal, TopicManagerModal } from "./modals";
 import { QuoteMigration } from "./migration";
 import { validateProfile } from "./profiles";
@@ -108,7 +108,7 @@ export default class QuoteLibraryPlugin extends Plugin {
   private async renderWidget(openNote: (path: string) => Promise<void> | void, container: HTMLElement, kind: "daily" | "pinned" | "recent"): Promise<void> {
     container.empty(); const data = await this.repository.dashboard(); const active = data.quotes.filter(q => !q.archived); let quotes = kind === "pinned" ? data.quotes.filter(q => q.pinned && (this.settings.power.defaults.showArchivedPinned || !q.archived)) : kind === "recent" ? [...active].sort((a, b) => b.created.localeCompare(a.created)) : active.length ? [active[dailyIndex(active.map(q => q.id || q.path), dateKey())]] : [];
     container.createEl("h3", { text: kind === "daily" ? "Quote of the Day" : kind === "pinned" ? "Pinned quotes" : "Recent quotes" }); if (!quotes.length) { container.createEl("p", { text: "No quotes available.", cls: "quote-library-muted" }); return; }
-    for (const quote of quotes.slice(0, this.settings.power.defaults.recentCount)) { const card = container.createDiv({ cls: "quote-library-widget-quote" }); card.createEl("blockquote", { text: quote.text }); card.createEl("span", { text: `— ${quote.author}`, cls: "quote-library-muted" }); const button = card.createEl("button", { text: "Open note" }); button.onclick = () => void openNote(quote.path); }
+    for (const quote of quotes.slice(0, this.settings.power.defaults.recentCount)) { const card = container.createDiv({ cls: "quote-library-widget-quote" }); const display = card.createEl("blockquote", { cls: "quote-library-display" }); display.createDiv({ text: quote.text, cls: "quote-library-quote-text" }); display.createEl("footer", { text: `— ${quote.author}`, cls: "quote-library-byline" }); const actions = card.createDiv({ cls: "quote-library-actions" }); const copy = actions.createEl("button", { text: "Copy" }); copy.onclick = () => void copyQuote(quote); const open = actions.createEl("button", { text: "Open note" }); open.onclick = () => void openNote(quote.path); }
   }
   private async runBulk<T>(action: () => Promise<T>): Promise<T> { this.bulkOperation = true; try { return await action(); } finally { this.bulkOperation = false; } }
 }

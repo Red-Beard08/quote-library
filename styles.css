@@ -33,7 +33,9 @@
 .quote-library-card, .quote-library-daily { padding: clamp(15px, 3vw, 24px); border: 1px solid var(--background-modifier-border); border-radius: 15px; background: var(--background-secondary); }
 .quote-library-daily { border-left: 5px solid var(--interactive-accent); }
 .quote-library-card blockquote, .quote-library-daily blockquote, .quote-library-duplicate-card blockquote { margin: 0 0 12px; padding: 0 0 0 14px; white-space: pre-wrap; font-size: 1.02rem; }
-.quote-library-byline { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
+.quote-library-display { display: grid; gap: 10px; }
+.quote-library-quote-text { white-space: pre-wrap; }
+.quote-library-byline { display: block; margin-top: 2px; font-size: .9rem; font-style: normal; }
 .quote-library-byline span, .quote-library-meta { color: var(--text-muted); }
 .quote-library-topics { margin-top: 9px; color: var(--text-accent); font-size: .86rem; }
 .quote-library-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: .78rem; }
@@ -63,7 +65,7 @@
 .quote-library-setting-error { margin: 8px 0; color: var(--text-error); }
 .quote-library-widget-quote { display: grid; gap: 8px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-secondary); }
 .quote-library-widget-quote blockquote { margin: 0; white-space: pre-wrap; }
-.quote-library-widget-quote button { justify-self: start; }
+.quote-library-widget-quote .quote-library-actions { margin-top: 0; }
 @media (max-width: 850px) { .quote-library-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 760px) { .quote-library-overview-columns.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) {
